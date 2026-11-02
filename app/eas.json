@@ -1,7 +1,7 @@
 {
   "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
   "build": {
-    "production": { "autoIncrement": true, "env": { "EXPO_PUBLIC_API_URL": "https://REEMPLAZA-CON-TU-URL.onrender.com" } }
+    "production": { "autoIncrement": true, "env": { "EXPO_PUBLIC_API_URL": "https://casa-club-tigres.onrender.com" } }
   },
   "submit": { "production": {} }
 }
