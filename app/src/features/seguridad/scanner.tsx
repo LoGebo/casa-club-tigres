@@ -2,12 +2,18 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { notify } from '@/components/notify';
 import { Button, Icon } from '@/components/ui';
 import { Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+// En web el lector de QR (WASM) se sirve desde nuestro propio servidor: no depende de un CDN y funciona sin conexión.
+if (Platform.OS === 'web') {
+  void import('barcode-detector').then(({ setZXingModuleOverrides }) =>
+    setZXingModuleOverrides({ locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? '/zxing_reader.wasm' : prefix + path) }));
+}
 
 /** onCode recibe el texto «CCF:…». Con `continuo` la cámara sigue abierta tras cada lectura (abordaje). */
 export function QrScanner({ onCode, title = 'Escanear QR de la jugadora', continuo }: { onCode: (qr: string) => void; title?: string; continuo?: boolean }) {
