@@ -36,7 +36,7 @@ export function DayStepper({ label, value, onChange }: { label?: string; value: 
       <Pressable style={btn} onPress={() => { tap(); onChange(addDays(value, -1)); }} accessibilityLabel="Día anterior"><Icon sf="chevron.left" ion="chevron-back" size={18} /></Pressable>
       <View style={{ flex: 1, alignItems: 'center' }}>
         {label ? <T v="caption" dim>{label}</T> : null}
-        <T v="headline" style={{ textTransform: 'capitalize' }}>{largaDia(value)}</T>
+        <T v="headline">{(l => l.charAt(0).toUpperCase() + l.slice(1))(largaDia(value))}</T>
       </View>
       <Pressable style={btn} onPress={() => { tap(); onChange(addDays(value, 1)); }} accessibilityLabel="Día siguiente"><Icon sf="chevron.right" ion="chevron-forward" size={18} /></Pressable>
     </View>

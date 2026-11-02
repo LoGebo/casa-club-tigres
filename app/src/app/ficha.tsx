@@ -94,7 +94,7 @@ export default function Ficha() {
       {f.estado === 'autorizada' && p ? (
         <>
           <Panel tone="ok" sf="checkmark.circle.fill" ion="checkmark-circle" title="Puede salir" sub={p.metodo_auth === 'emergencia' ? 'Salida de emergencia' : undefined} />
-          <Verifica acomp={p.acompanante} recogen={f.recogen} tutor={e.tutor_nombre} />
+          {f.menor ? <Verifica acomp={p.acompanante} recogen={f.recogen} tutor={e.tutor_nombre} /> : null}
           {datos(p)}
           <Button title="Registrar salida" loading={busy} onPress={() => mov('salida')} />
         </>
