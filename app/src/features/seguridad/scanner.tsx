@@ -11,6 +11,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 // En web el lector de QR (WASM) se sirve desde nuestro propio servidor: no depende de un CDN y funciona sin conexión.
 if (Platform.OS === 'web') {
+  void fetch('/zxing_reader.wasm').catch(() => {}); // precarga: queda en caché para leer QR aunque se caiga el internet
   void import('barcode-detector').then(({ setZXingModuleOverrides }) =>
     setZXingModuleOverrides({ locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? '/zxing_reader.wasm' : prefix + path) }));
 }

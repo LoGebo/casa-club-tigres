@@ -673,7 +673,7 @@ const PRIVACIDAD = `<!doctype html><html lang="es"><meta charset="utf-8"><meta n
 <h2>Conservación y eliminación</h2><p>Las fotos de comidas se borran a los 30 días y las demás fotos a los 90. Cada jugadora puede eliminar su cuenta desde Cuenta &rsaquo; Eliminar mi cuenta, y los datos personales se borran. También puede pedirlo a la coordinación de la Casa Club. El historial de salidas se conserva de forma anónima por seguridad.</p>
 <h2>Derechos ARCO</h2><p>Puedes acceder, rectificar, cancelar u oponerte al uso de tus datos (o los de tu hija) con la coordinación de la Casa Club.</p></html>`;
 app.get('/privacidad', (_req, res) => res.type('html').send(PRIVACIDAD));
-app.use(express.static(WEB, { setHeaders: (res, f) => { res.set('Cache-Control', /[/\\]_expo[/\\]|[/\\]assets[/\\]/.test(f) ? 'public, max-age=31536000, immutable' : 'no-cache'); } }));
+app.use(express.static(WEB, { setHeaders: (res, f) => { res.set('Cache-Control', /[/\\]_expo[/\\]|[/\\]assets[/\\]|\.wasm$/.test(f) ? 'public, max-age=31536000, immutable' : 'no-cache'); } }));
 app.use((req, res, next) => { // rutas de la app (/login, /registro, /p/TOKEN…) → la misma página; la API nunca cae aquí
   if (req.method !== 'GET' || req.path.startsWith('/api/') || path.extname(req.path)) return next();
   res.set('Cache-Control', 'no-cache').sendFile(path.join(WEB, 'index.html'), (e) => e && next());
