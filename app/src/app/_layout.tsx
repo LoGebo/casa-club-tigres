@@ -4,9 +4,11 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { ToastHost } from '@/components/notify';
+import { OfflineBanner } from '@/components/offline-banner';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { escucharToques, renovarPush } from '@/lib/push';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -15,13 +17,23 @@ function Gate() {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const c = Colors[scheme];
   useEffect(() => { if (ready) void SplashScreen.hideAsync(); }, [ready]);
+  useEffect(() => { if (!session) return; void renovarPush(); return escucharToques(); }, [session]);
   if (!ready) return null;
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
-  const rol = session?.rol;
+  const forzar = !!session?.cambiar_pin; // PIN temporal: primero debe elegir el suyo
+  const rol = forzar ? undefined : session?.rol;
+  const dentro = !!session && !forzar;
   return (
     <ThemeProvider value={{ ...base, colors: { ...base.colors, primary: c.tint, background: c.bg, card: c.surface, text: c.label, border: c.sep } }}>
       <View style={{ flex: 1, backgroundColor: c.bg }}>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+          <Stack.Screen name="p/[token]" />
+          <Stack.Protected guard={forzar}>
+            <Stack.Screen name="cambiar-pin" />
+          </Stack.Protected>
+          <Stack.Protected guard={dentro}>
+            <Stack.Screen name="notificaciones" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
           <Stack.Protected guard={!session}>
             <Stack.Screen name="login" />
             <Stack.Screen name="registro" />
@@ -35,10 +47,10 @@ function Gate() {
           <Stack.Protected guard={rol === 'coordinacion'}>
             <Stack.Screen name="coord" />
           </Stack.Protected>
-          <Stack.Protected guard={!!session}>
+          <Stack.Protected guard={dentro}>
             <Stack.Screen name="cuenta" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.5], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
-          <Stack.Protected guard={!!session}>
+          <Stack.Protected guard={dentro}>
             <Stack.Screen name="partido" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
           <Stack.Protected guard={rol === 'coordinacion'}>
@@ -52,12 +64,19 @@ function Gate() {
             <Stack.Screen name="visita-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
             <Stack.Screen name="ticket-nuevo" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
-          <Stack.Protected guard={!!session}>
+          <Stack.Protected guard={dentro}>
             <Stack.Screen name="incidencia-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
+          <Stack.Protected guard={rol === 'jugadora'}>
+            <Stack.Screen name="comida-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="viaje-jugadora" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
           {/* AGENT:jugadora-routes */}
           <Stack.Protected guard={rol === 'seguridad'}>
             <Stack.Screen name="ficha" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
+          <Stack.Protected guard={rol === 'seguridad' || rol === 'coordinacion'}>
+            <Stack.Screen name="abordaje" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
           {/* AGENT:seguridad-routes */}
           <Stack.Protected guard={rol === 'coordinacion'}>
@@ -74,8 +93,15 @@ function Gate() {
           <Stack.Protected guard={rol === 'coordinacion'}>
             <Stack.Screen name="jugadora-registro" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
+          <Stack.Protected guard={rol === 'coordinacion'}>
+            <Stack.Screen name="viaje-coord" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="jugadora-recogen-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="menu-editar" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="aviso-lecturas" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
           {/* AGENT:coord-routes */}
         </Stack>
+        <OfflineBanner />
         <ToastHost />
       </View>
     </ThemeProvider>

@@ -1,7 +1,8 @@
 // Stack de cada pestaña: título grande nativo, barra translúcida y botón de cuenta.
 import { router, Stack } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
+import { Bell } from '@/components/bell';
 import { Avatar } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
@@ -32,7 +33,7 @@ export function TabStack({ title, children }: { title: string; children?: React.
         headerTitleStyle: { color: t.label },
         headerLargeTitleStyle: { color: t.label },
         contentStyle: { backgroundColor: t.bg },
-        headerRight: () => <AccountButton />,
+        headerRight: () => <View style={{ flexDirection: 'row', alignItems: 'center' }}><Bell /><AccountButton /></View>,
       }}>
       <Stack.Screen name="index" options={{ title }} />
       {children}

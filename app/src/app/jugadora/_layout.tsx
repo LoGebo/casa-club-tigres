@@ -9,8 +9,8 @@ const TABS: WebTab[] = [
   { name: 'inicio', title: 'Inicio', ion: 'home-outline', ionOn: 'home' },
   { name: 'permisos', title: 'Permisos', ion: 'exit-outline', ionOn: 'exit' },
   { name: 'calendario', title: 'Calendario', ion: 'calendar-outline', ionOn: 'calendar' },
-  { name: 'visitas', title: 'Visitas', ion: 'people-outline', ionOn: 'people' },
-  { name: 'servicios', title: 'Servicios', ion: 'construct-outline', ionOn: 'construct' },
+  { name: 'comidas', title: 'Comidas', ion: 'restaurant-outline', ionOn: 'restaurant' },
+  { name: 'mas', title: 'Más', ion: 'ellipsis-horizontal-circle-outline', ionOn: 'ellipsis-horizontal-circle' },
 ];
 
 export default function Tabs() {
@@ -30,13 +30,13 @@ export default function Tabs() {
         <NativeTabs.Trigger.Label>Calendario</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} md="calendar_month" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="visitas">
-        <NativeTabs.Trigger.Label>Visitas</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
+      <NativeTabs.Trigger name="comidas">
+        <NativeTabs.Trigger.Label>Comidas</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'fork.knife', selected: 'fork.knife' }} md="restaurant" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="servicios">
-        <NativeTabs.Trigger.Label>Servicios</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }} md="build" />
+      <NativeTabs.Trigger name="mas">
+        <NativeTabs.Trigger.Label>Más</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'ellipsis.circle', selected: 'ellipsis.circle.fill' }} md="more_horiz" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

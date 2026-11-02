@@ -444,7 +444,7 @@ const visitaEstado = (de, a, roles) => [auth(...roles), async (req, res) => {
   await audit(req.u, 'visita_' + a, req.params.id);
   const v = await one('SELECT jugadora_id, visitante FROM visitas WHERE id=$1', [req.params.id]);
   const txt = { autorizada: ['Visita autorizada', `${v.visitante} puede venir`], rechazada: ['Visita rechazada', v.visitante], dentro: ['Llegó tu visita', `${v.visitante} ya está en la entrada`] }[a];
-  if (txt) notify([{ rol: 'jugadora', id: v.jugadora_id }], { title: txt[0], body: txt[1], ruta: '/jugadora/visitas' });
+  if (txt) notify([{ rol: 'jugadora', id: v.jugadora_id }], { title: txt[0], body: txt[1], ruta: '/jugadora/mas/visitas' });
   res.json({ ok: true });
 }];
 app.post('/api/visitas/:id/autorizar', ...visitaEstado(['pendiente'], 'autorizada', ['coordinacion']));
@@ -614,7 +614,7 @@ app.patch('/api/tickets/:id', auth('coordinacion'), async (req, res) => {
   const e = ['abierto', 'en_proceso', 'resuelto'].includes(req.body.estado) ? req.body.estado : 'abierto';
   const t = await one('SELECT * FROM tickets WHERE id=$1', [req.params.id]); if (!t) return fail(res, 404, 'No existe');
   await q('UPDATE tickets SET estado=$1, respuesta=$2, resuelto_at=$3 WHERE id=$4', [e, str(req.body.respuesta, 300), e === 'resuelto' ? Date.now() : null, req.params.id]);
-  if (e !== t.estado) notify([{ rol: 'jugadora', id: t.jugadora_id }], { title: e === 'resuelto' ? 'Tu solicitud se resolvió' : 'Tu solicitud está en proceso', body: str(req.body.respuesta, 120) || t.descripcion.slice(0, 80), ruta: '/jugadora/servicios' });
+  if (e !== t.estado) notify([{ rol: 'jugadora', id: t.jugadora_id }], { title: e === 'resuelto' ? 'Tu solicitud se resolvió' : 'Tu solicitud está en proceso', body: str(req.body.respuesta, 120) || t.descripcion.slice(0, 80), ruta: '/jugadora/mas/servicios' });
   res.json({ ok: true });
 });
 

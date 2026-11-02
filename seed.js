@@ -11,7 +11,7 @@ for (const [u, n, rol, p] of [['seguridad', 'Seguridad', 'seguridad', pin(proces
 if (process.argv[2] === 'demo') {
   for (const [c, n, nac, hab] of [['ana', 'Ana Martínez', '2009-03-12', '101'], ['bea', 'Beatriz Soto', '2008-07-30', '101'], ['caro', 'Carolina Ruiz', '2004-11-02', '102']])
     if (!(await one('SELECT 1 FROM jugadoras WHERE clave=$1', [c])))
-      await q('INSERT INTO jugadoras(clave,nombre,nacimiento,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,alergias,pin_hash,qr) VALUES($1,$2,$3,$4,$5,$6,$5,$6,$7,$8,$9)', [c, n, nac, hab, 'Tutor de ' + n.split(' ')[0], '8112345678', c === 'ana' ? 'Penicilina' : null, hashPin('1234'), crypto.randomBytes(12).toString('hex')]);
+      await q('INSERT INTO jugadoras(clave,nombre,nacimiento,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,alergias,pin_hash,qr,categoria,telefono,sangre) VALUES($1,$2,$3,$4,$5,$6,$5,$6,$7,$8,$9,$10,$11,$12)', [c, n, nac, hab, 'Tutor de ' + n.split(' ')[0], '8112345678', c === 'ana' ? 'Penicilina' : null, hashPin('1234'), crypto.randomBytes(12).toString('hex'), { ana: 'Sub-17', bea: 'Sub-19', caro: 'Primer equipo' }[c], '81000000' + (c === 'ana' ? '01' : c === 'bea' ? '02' : '03'), { ana: 'O+', bea: 'A+', caro: 'B+' }[c]]);
   if (!(await one('SELECT 1 FROM avisos'))) {
     const d = new Date(); d.setHours(0, 0, 0, 0); const t = d.getTime(), h = (x) => t + x * 36e5;
     await q("INSERT INTO avisos(titulo,cuerpo,fijo,creado_at) VALUES('Bienvenidas a Casa Club','Recuerden escanear su QR cada vez que salgan y regresen. Sin permiso autorizado no hay salida.',TRUE,$1)", [Date.now()]);
