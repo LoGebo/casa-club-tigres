@@ -155,4 +155,7 @@ ok(await call('POST', '/api/mov', { jugadora_id: carId, tipo: 'salida', cid: 'of
 const rs = (await call('GET', '/api/resumen', null, co)).j; assert.ok(rs.actual.salidas >= 2);
 ok(await call('POST', '/api/push/expo', { token: 'ExponentPushToken[abc-123]' }, ana)); ok(await call('POST', '/api/push/expo', { token: 'x' }, ana), 400);
 await vigilar();
+// borrar cuenta
+const del = await login('caro', '1234'); ok(await call('DELETE', '/api/me', { pin: '0000' }, del), 401); ok(await call('DELETE', '/api/me', { pin: '1234' }, del));
+assert.equal((await call('POST', '/api/login', { usuario: 'caro', pin: '1234' })).s, 401);
 console.log('OK'); srv.close(); process.exit(0);

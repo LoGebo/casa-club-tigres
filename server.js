@@ -662,8 +662,17 @@ app.patch('/api/staff/:id', auth('coordinacion'), async (req, res) => {
 });
 app.get('/api/audit', auth('coordinacion'), async (req, res) => res.json(await q('SELECT a.*, s.nombre actor FROM audit a LEFT JOIN staff s ON s.id=a.actor_id AND a.rol IN(\'seguridad\',\'coordinacion\') ORDER BY a.at DESC LIMIT 150')));
 
-mount({ app, auth, STAFF, fail, str, notify, audit, sign, verify, fotoUrl, fechaLocal, diaMs, hora, esMenor, strike, bloqueado });
+mount({ app, auth, STAFF, fail, str, notify, audit, sign, verify, fotoUrl, fechaLocal, diaMs, hora, esMenor, strike, bloqueado, okPin, hashPin });
 const WEB = path.join(__dir, 'public');
+const PRIVACIDAD = `<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aviso de privacidad · Casa Club Femenil</title>
+<style>body{font:16px/1.55 -apple-system,system-ui,sans-serif;max-width:680px;margin:0 auto;padding:24px 16px;color:#111}h1{font-size:24px}h2{font-size:18px;margin-top:24px}</style>
+<h1>Aviso de privacidad</h1><p>Casa Club Femenil Tigres UANL (la "Casa Club") usa esta app únicamente para controlar entradas, salidas, permisos y la convivencia dentro de la casa, y para cuidar la seguridad de las jugadoras, incluidas las menores de edad.</p>
+<h2>Datos que se guardan</h2><p>Nombre, fecha de nacimiento, categoría, teléfono, datos del tutor y de contacto de emergencia, información médica básica (alergias, sangre, seguro), movimientos de entrada y salida, permisos, viajes, comidas con foto, reportes con foto y notificaciones.</p>
+<h2>Para qué se usan</h2><p>Autorizar y registrar salidas y regresos, avisar a tutores y personal de la Casa Club, atender emergencias y organizar viajes, horarios y comidas. No se venden ni se comparten con terceros ni se usan para publicidad.</p>
+<h2>Quién los ve</h2><p>La jugadora ve sus propios datos. El personal de seguridad y de coordinación de la Casa Club ve lo necesario para su función. El tutor solo ve el permiso que se le envía por enlace con código.</p>
+<h2>Conservación y eliminación</h2><p>Las fotos de comidas se borran a los 30 días y las demás fotos a los 90. Cada jugadora puede eliminar su cuenta desde Cuenta &rsaquo; Eliminar mi cuenta, y los datos personales se borran. También puede pedirlo a la coordinación de la Casa Club. El historial de salidas se conserva de forma anónima por seguridad.</p>
+<h2>Derechos ARCO</h2><p>Puedes acceder, rectificar, cancelar u oponerte al uso de tus datos (o los de tu hija) con la coordinación de la Casa Club.</p></html>`;
+app.get('/privacidad', (_req, res) => res.type('html').send(PRIVACIDAD));
 app.use(express.static(WEB, { setHeaders: (res, f) => { res.set('Cache-Control', /[/\\]_expo[/\\]|[/\\]assets[/\\]/.test(f) ? 'public, max-age=31536000, immutable' : 'no-cache'); } }));
 app.use((req, res, next) => { // rutas de la app (/login, /registro, /p/TOKEN…) → la misma página; la API nunca cae aquí
   if (req.method !== 'GET' || req.path.startsWith('/api/') || path.extname(req.path)) return next();

@@ -24,6 +24,8 @@ export default function Cuenta() {
   const [cambiando, setCambiando] = useState(false);
   const [actual, setActual] = useState('');
   const [nuevo, setNuevo] = useState('');
+  const [borrando, setBorrando] = useState(false);
+  const [pinBorrar, setPinBorrar] = useState('');
   const [push, setPush] = useState<PushEstado | null>(null);
   const refrescarPush = useCallback(() => { void estadoPush().then(setPush).catch(() => setPush('no_disponible')); }, []);
   useEffect(refrescarPush, [refrescarPush]);
@@ -63,6 +65,13 @@ export default function Cuenta() {
           <Button title="Guardar PIN" onPress={guardar} disabled={!actual || nuevo.length < 4} />
           <Button title="Cancelar" kind="plain" onPress={() => setCambiando(false)} />
         </View>
+      ) : borrando ? (
+        <View style={{ gap: Space.m }}>
+          <T v="sub" dim>Se borran tus datos personales, fotos y comidas, y ya no podrás entrar. Esta acción no se puede deshacer. Escribe tu PIN para confirmar.</T>
+          <TextInput value={pinBorrar} onChangeText={setPinBorrar} placeholder="Tu PIN" placeholderTextColor={t.label3} secureTextEntry keyboardType="number-pad" style={input} accessibilityLabel="PIN para eliminar la cuenta" />
+          <Button title="Eliminar mi cuenta" kind="danger" disabled={pinBorrar.length < 4} onPress={async () => { const r = await run(() => api('/me', 'DELETE', { pin: pinBorrar })); if (r) { router.dismiss(); await logout(); } }} />
+          <Button title="Cancelar" kind="plain" onPress={() => { setBorrando(false); setPinBorrar(''); }} />
+        </View>
       ) : (
         <>
           <Group header="Avisos">
@@ -77,6 +86,7 @@ export default function Cuenta() {
           <Group>
             <Row title="Cerrar sesión" tone="danger" onPress={async () => { router.dismiss(); await logout(); }} />
           </Group>
+          {session.rol === 'jugadora' ? <Group footer="Borra tus datos personales de la app."><Row title="Eliminar mi cuenta" tone="danger" onPress={() => setBorrando(true)} /></Group> : null}
           <T v="caption" dim style={{ textAlign: 'center' }}>Casa Club Femenil Tigres · versión {v}</T>
         </>
       )}

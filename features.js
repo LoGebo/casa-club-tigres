@@ -192,4 +192,23 @@ export default function mount(h) {
       permisos: await q("SELECT id, jugadora_id, estado, tipo, destino, acompanante, salida_at, regreso_at, viaje_id FROM permisos WHERE estado IN('autorizado','salio') AND regreso_at>$1", [now - 24 * 36e5]),
     });
   });
+
+  // ---------- borrar mi cuenta (requisito de App Store 5.1.1): se eliminan los datos personales; el historial de salidas queda anónimo por seguridad ----------
+  app.delete('/api/me', auth('jugadora'), async (req, res) => {
+    const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.u.id]); if (!j) return fail(res, 404, 'No existe');
+    if (bloqueado(req.ip)) return fail(res, 429, 'Demasiados intentos. Espera 10 minutos.');
+    if (!h.okPin(String(req.body.pin || ''), j.pin_hash)) { strike(req.ip); return fail(res, 401, 'El PIN no es correcto'); }
+    const id = j.id;
+    await q('DELETE FROM fotos WHERE owner_rol=$1 AND owner_id=$2', ['jugadora', id]);
+    for (const t of ['comidas', 'recogen', 'aviso_lectura', 'viaje_check', 'viaje_jug']) await q(`DELETE FROM ${t} WHERE jugadora_id=$1`, [id]);
+    await q('DELETE FROM notificaciones WHERE rol=$1 AND user_id=$2', ['jugadora', id]);
+    await q('DELETE FROM push_subs WHERE rol=$1 AND user_id=$2', ['jugadora', id]);
+    await q('DELETE FROM push_tokens WHERE rol=$1 AND user_id=$2', ['jugadora', id]);
+    await q("UPDATE tickets SET descripcion='(eliminado)', foto_id=NULL WHERE jugadora_id=$1", [id]);
+    await q("UPDATE jugadoras SET activa=FALSE, nombre='Cuenta eliminada', clave=$1, telefono=NULL, tutor_nombre=NULL, tutor_tel=NULL, emergencia_nombre=NULL, emergencia_tel=NULL, alergias=NULL, notas_medicas=NULL, sangre=NULL, seguro=NULL, habitacion=NULL, disp_nota=NULL, pin_hash=$2, qr=$3 WHERE id=$4",
+      ['eliminada-' + id, h.hashPin(crypto.randomBytes(12).toString('hex')), crypto.randomBytes(12).toString('hex'), id]);
+    await audit({ rol: 'jugadora', id }, 'cuenta_eliminada', String(id));
+    notify(['coordinacion'], { title: 'Una jugadora eliminó su cuenta', body: j.nombre, ruta: '/coord/jugadoras' });
+    res.json({ ok: true });
+  });
 }
