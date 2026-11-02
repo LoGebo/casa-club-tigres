@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS tickets(id SERIAL PRIMARY KEY, jugadora_id INT NOT NU
 CREATE TABLE IF NOT EXISTS conteos(id SERIAL PRIMARY KEY, at ${T} NOT NULL, staff_id INT, total INT NOT NULL, presentes INT NOT NULL, detalle TEXT);
 CREATE TABLE IF NOT EXISTS config(clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit(id SERIAL PRIMARY KEY, at ${T} NOT NULL, rol TEXT, actor_id INT, accion TEXT NOT NULL, detalle TEXT);
+CREATE TABLE IF NOT EXISTS partidos(id SERIAL PRIMARY KEY, torneo TEXT, jornada INT, local TEXT NOT NULL, visitante TEXT NOT NULL, inicio_at ${T} NOT NULL, sede TEXT, resultado TEXT, demo BOOLEAN NOT NULL DEFAULT FALSE, UNIQUE(inicio_at, local, visitante));
+CREATE TABLE IF NOT EXISTS viajes(id SERIAL PRIMARY KEY, partido_id INT REFERENCES partidos(id), titulo TEXT NOT NULL, destino TEXT NOT NULL, salida_at ${T} NOT NULL, regreso_at ${T} NOT NULL, transporte TEXT, hospedaje TEXT, nota TEXT);
+CREATE TABLE IF NOT EXISTS viaje_jug(viaje_id INT NOT NULL REFERENCES viajes(id), jugadora_id INT NOT NULL REFERENCES jugadoras(id), estado TEXT NOT NULL, PRIMARY KEY(viaje_id, jugadora_id));
 CREATE TABLE IF NOT EXISTS push_subs(id SERIAL PRIMARY KEY, rol TEXT NOT NULL, user_id INT NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_perm_estado ON permisos(estado);
 CREATE INDEX IF NOT EXISTS ix_perm_jug ON permisos(jugadora_id);

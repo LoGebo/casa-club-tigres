@@ -70,4 +70,19 @@ assert.ok((await call('GET', '/api/estadisticas', null, co)).j.length === 2);
 assert.ok((await call('GET', '/api/audit', null, co)).j.length > 5);
 ok(await call('GET', '/api/historial', null, seg), 401);
 ok(await call('GET', '/api/health'));
+// liga, viajes y convocatorias
+const t0 = Date.now() + 864e5;
+ok(await call('POST', '/api/partidos', { local: 'Pachuca', visitante: 'Tigres', inicio_at: t0 }, ana), 401);
+ok(await call('POST', '/api/partidos', { rows: [{ local: 'Pachuca', visitante: 'Tigres', inicio_at: t0, jornada: 3 }, { local: 'Tigres', visitante: 'Pumas', inicio_at: t0 + 864e5 }] }, co));
+assert.equal((await call('POST', '/api/partidos', { rows: [{ local: 'Pachuca', visitante: 'Tigres', inicio_at: t0 }] }, co)).j.agregados, 0); // sin duplicados
+const pts = (await call('GET', '/api/partidos', null, ana)).j; assert.equal(pts.length, 2);
+const vj = (await call('POST', '/api/viajes', { partido_id: pts[0].id, titulo: 'Pachuca', destino: 'Pachuca', salida_at: t0 - 36e5, regreso_at: t0 + 36e5 }, co)).j.id;
+const aid = (await call('GET', '/api/jugadoras', null, co)).j.find((j) => j.clave === 'ana').id;
+ok(await call('POST', `/api/viajes/${vj}/yo`, { estado: 'confirmada' }, ana), 400); // no convocada aún
+ok(await call('POST', `/api/viajes/${vj}/yo`, { estado: 'quiere' }, ana));
+ok(await call('PUT', `/api/viajes/${vj}/jug`, { ids: [aid], estado: 'convocada' }, co));
+ok(await call('POST', `/api/viajes/${vj}/yo`, { estado: 'confirmada' }, ana));
+let vs = (await call('GET', '/api/viajes', null, seg)).j; assert.equal(vs[0].jugadoras[0].estado, 'confirmada'); assert.equal(vs[0].cuentas.confirmada, 1);
+vs = (await call('GET', '/api/viajes', null, ana)).j; assert.equal(vs[0].yo, 'confirmada'); assert.equal(vs[0].jugadoras, undefined);
+ok(await call('DELETE', `/api/viajes/${vj}`, null, co));
 console.log('OK'); srv.close(); process.exit(0);

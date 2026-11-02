@@ -1,6 +1,7 @@
+import * as liga from './v-liga.js';
 import { $, esc, ACT, st, api, toast, dt, hm, mins, badge, sev, modal, foot, ask, sure, ic, hoyStr } from './ui.js';
 // Barra inferior: 4 principales + «Más» (Conteo, Visitas, Incidencias)
-export const tabs = [['scan', 'Escanear', 'scan'], ['jug', 'Jugadoras', 'users'], ['fuera', 'Afuera', 'out'], ['reg', 'Registro', 'list'], ['conteo', 'Conteo', 'check'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert']];
+export const tabs = [['scan', 'Escanear', 'scan'], ['jug', 'Jugadoras', 'users'], ['reg', 'Registro', 'list'], ['cal', 'Calendario', 'cal'], ['fuera', 'Afuera', 'out'], ['conteo', 'Conteo', 'check'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert']];
 export const live = ['jug', 'fuera', 'reg', 'visitas', 'incid'];
 export const badges = async () => { const d = await api('/dashboard'); return { fuera: d.atrasadas || '', incid: d.incidencias || '' }; };
 
@@ -29,6 +30,7 @@ const FILTRO = { todas: () => true, afuera: (c) => ['tarde', 'fuera'].includes(c
 const celdas = (rows) => rows.filter((x) => FILTRO[JF](x.c) && (!JQ || x.nombre.toLowerCase().includes(JQ))).map((x) => `<button class="cell" data-act="ficha" data-id="${x.id}"><span class="grow"><span class="row between"><span><b>${esc(x.nombre)}</b>${x.habitacion ? ` <small>· hab ${esc(x.habitacion)}</small>` : ''}</span><span class="badge ${BADGE[x.c][0]}">${BADGE[x.c][1]}</span></span><small>${linea(x, x.c)}</small></span>${chev}</button>`).join('') || '<div class="empty">Sin resultados</div>';
 
 export async function view(tab) {
+  if (tab === 'cal') return liga.view();
   if (tab === 'jug') {
     const rows = (await api('/guardia')).map((x) => ({ ...x, c: clasif(x) })).sort((a, b) => PRI[a.c] - PRI[b.c] || a.nombre.localeCompare(b.nombre));
     const n = (f) => rows.filter((x) => FILTRO[f](x.c)).length;

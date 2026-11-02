@@ -18,5 +18,18 @@ if (process.argv[2] === 'demo') {
     for (const [ti, tp, a, b, l] of [['Desayuno', 'comida', 7, 8, 'Comedor'], ['Entrenamiento', 'entrenamiento', 9.5, 11.5, 'Cancha 2'], ['Comida', 'comida', 14, 15, 'Comedor'], ['Tutoría escolar', 'estudio', 17, 18.5, 'Sala de estudio'], ['Cena', 'comida', 20, 21, 'Comedor']])
       await q('INSERT INTO agenda(titulo,tipo,inicio_at,fin_at,lugar) VALUES($1,$2,$3,$4,$5)', [ti, tp, h(a), h(b), l]);
   }
+  if (!(await one('SELECT 1 FROM partidos'))) { // calendario de EJEMPLO (fechas inventadas, marcado demo): la coordinación carga el real
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0); const day = (n, h) => d0.getTime() + n * 864e5 + h * 36e5;
+    const J = [['Tigres', 'Rayadas', 'Estadio Universitario'], ['Pachuca', 'Tigres', 'Estadio Hidalgo'], ['Tigres', 'Toluca', 'Estadio Universitario'], ['Atlas', 'Tigres', 'Estadio Jalisco'], ['Tigres', 'Pumas', 'Estadio Universitario']];
+    const O = [['América', 'Chivas'], ['Cruz Azul', 'Juárez'], ['Pumas', 'Atlas'], ['Rayadas', 'América'], ['Chivas', 'Toluca']];
+    for (let i = 0; i < 5; i++) {
+      const base = 4 + i * 7;
+      await q("INSERT INTO partidos(torneo,jornada,local,visitante,inicio_at,sede,demo) VALUES('Ejemplo',$1,$2,$3,$4,$5,TRUE)", [i + 1, J[i][0], J[i][1], day(base, 19), J[i][2]]);
+      await q("INSERT INTO partidos(torneo,jornada,local,visitante,inicio_at,sede,demo) VALUES('Ejemplo',$1,$2,$3,$4,'',TRUE)", [i + 1, O[i][0], O[i][1], day(base + 1, 17)]);
+    }
+    const pa = await one("SELECT id,inicio_at FROM partidos WHERE local='Pachuca'");
+    const v = await one("INSERT INTO viajes(partido_id,titulo,destino,salida_at,regreso_at,transporte,hospedaje) VALUES($1,'Pachuca vs Tigres','Pachuca, Hgo.',$2,$3,'Autobús del club','Hotel por confirmar') RETURNING id", [pa.id, pa.inicio_at - 30 * 36e5, pa.inicio_at + 8 * 36e5]);
+    for (const [c, e] of [['ana', 'convocada'], ['bea', 'quiere']]) await q('INSERT INTO viaje_jug SELECT $1,id,$2 FROM jugadoras WHERE clave=$3', [v.id, e, c]);
+  }
 }
 process.exit(0);

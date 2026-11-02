@@ -1,5 +1,6 @@
+import * as liga from './v-liga.js';
 import { esc, ACT, st, api, toast, dt, hm, dia, badge, modal, foot, localInput, fromInput, ic } from './ui.js';
-export const tabs = [['inicio', 'Inicio', 'home'], ['permisos', 'Permisos', 'out'], ['visitas', 'Visitas', 'users'], ['servicios', 'Servicios', 'tool']];
+export const tabs = [['inicio', 'Inicio', 'home'], ['permisos', 'Permisos', 'out'], ['cal', 'Calendario', 'cal'], ['visitas', 'Visitas', 'users'], ['servicios', 'Servicios', 'tool']];
 export const live = ['inicio'];
 export const badges = async () => ({});
 
@@ -9,6 +10,7 @@ const agendaHtml = (ag) => {
 };
 
 export async function view(tab) {
+  if (tab === 'cal') return liga.view();
   if (tab === 'permisos') {
     const ps = await api('/permisos');
     return { html: `<div class="sec"><h2>Mis permisos</h2><button class="btn gold" data-act="nuevoPermiso">+ Solicitar</button></div>

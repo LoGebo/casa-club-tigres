@@ -1,5 +1,6 @@
+import * as liga from './v-liga.js';
 import { $, esc, ACT, st, api, toast, dt, hm, dia, mins, badge, sev, modal, foot, ask, sure, localInput, fromInput, hoyStr } from './ui.js';
-export const tabs = [['hoy', 'Hoy', 'home'], ['permisos', 'Permisos', 'out'], ['jug', 'Jugadoras', 'users'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert'], ['serv', 'Servicios', 'tool'], ['com', 'Comunicar', 'bell'], ['rep', 'Reportes', 'chart'], ['equipo', 'Equipo', 'cog']];
+export const tabs = [['hoy', 'Hoy', 'home'], ['permisos', 'Permisos', 'out'], ['cal', 'Calendario', 'cal'], ['jug', 'Jugadoras', 'users'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert'], ['serv', 'Servicios', 'tool'], ['com', 'Comunicar', 'bell'], ['rep', 'Reportes', 'chart'], ['equipo', 'Equipo', 'cog']];
 export const live = ['hoy', 'permisos', 'incid'];
 export const badges = async () => { const d = await api('/dashboard'); return { permisos: d.por_resolver || '', visitas: d.visitas_pend || '', incid: d.incidencias || '', serv: d.tickets || '' }; };
 
@@ -22,6 +23,7 @@ const jugCard = (j) => `<div class="card tight" ${j.activa ? '' : 'style="opacit
   <img alt="QR de ${esc(j.nombre)}" width="130" height="130" loading="lazy" src="/api/qr?d=${encodeURIComponent(j.qr)}"><div class="row no-print"><button class="btn sm ghost" data-act="jugForm" data-id="${j.id}">Editar</button></div></div>`;
 
 export async function view(tab) {
+  if (tab === 'cal') return liga.view();
   if (tab === 'permisos') {
     const ps = (await api('/permisos')).filter((p) => p.estado !== 'regreso');
     const G = [['Por resolver', ps.filter((p) => ['pendiente', 'esperando_padres'].includes(p.estado))], ['Autorizados', ps.filter((p) => p.estado === 'autorizado')], ['Afuera / recientes', ps.filter((p) => ['salio', 'rechazado', 'vencido'].includes(p.estado))]];

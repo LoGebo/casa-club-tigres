@@ -341,6 +341,55 @@ app.post('/api/agenda', auth('coordinacion'), async (req, res) => {
 });
 app.delete('/api/agenda/:id', auth('coordinacion'), async (req, res) => { await q('DELETE FROM agenda WHERE id=$1', [req.params.id]); res.json({ ok: true }); });
 
+// ---------- calendario de la liga, viajes y convocatorias ----------
+const ESTADOS_VJ = ['convocada', 'quiere', 'confirmada', 'baja'];
+app.get('/api/partidos', auth(), async (req, res) => res.json(await q('SELECT * FROM partidos WHERE inicio_at>=$1 ORDER BY inicio_at LIMIT 400', [Date.now() - (+req.query.atras || 30) * 864e5])));
+app.post('/api/partidos', auth('coordinacion'), async (req, res) => { // admite un partido o {rows:[…]} (importación CSV)
+  const rows = (Array.isArray(req.body.rows) ? req.body.rows : [req.body]).slice(0, 400); let n = 0;
+  for (const b of rows) {
+    if (!str(b.local) || !str(b.visitante) || !(b.inicio_at > 0)) return fail(res, 400, 'Cada partido necesita local, visitante y fecha');
+    const r = await q('INSERT INTO partidos(torneo,jornada,local,visitante,inicio_at,sede,resultado) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id', [str(b.torneo, 60), Number.isInteger(+b.jornada) && +b.jornada > 0 ? +b.jornada : null, str(b.local, 60), str(b.visitante, 60), b.inicio_at, str(b.sede, 100), str(b.resultado, 20)]);
+    n += r.length;
+  }
+  await audit(req.u, 'partidos', `${n} agregados`); res.json({ ok: true, agregados: n });
+});
+app.patch('/api/partidos/:id', auth('coordinacion'), async (req, res) => { await q('UPDATE partidos SET resultado=$1, sede=COALESCE($2,sede) WHERE id=$3', [str(req.body.resultado, 20), str(req.body.sede, 100), req.params.id]); res.json({ ok: true }); });
+app.delete('/api/partidos/:id', auth('coordinacion'), async (req, res) => { await q('UPDATE viajes SET partido_id=NULL WHERE partido_id=$1', [req.params.id]); await q('DELETE FROM partidos WHERE id=$1', [req.params.id]); res.json({ ok: true }); });
+app.delete('/api/partidos', auth('coordinacion'), async (req, res) => { // borra solo los de demostración
+  await q('UPDATE viajes SET partido_id=NULL WHERE partido_id IN (SELECT id FROM partidos WHERE demo)'); await q('DELETE FROM partidos WHERE demo'); res.json({ ok: true });
+});
+
+app.get('/api/viajes', auth(), async (req, res) => {
+  const vs = await q('SELECT v.*, p.local, p.visitante, p.inicio_at AS partido_at FROM viajes v LEFT JOIN partidos p ON p.id=v.partido_id WHERE v.regreso_at>=$1 ORDER BY v.salida_at', [Date.now() - (+req.query.atras || 0) * 864e5]);
+  const js = vs.length ? await q('SELECT vj.viaje_id, vj.estado, j.id, j.nombre FROM viaje_jug vj JOIN jugadoras j ON j.id=vj.jugadora_id WHERE vj.viaje_id = ANY($1) ORDER BY j.nombre', [vs.map((v) => v.id)]) : [];
+  const staff = req.u.rol !== 'jugadora';
+  res.json(vs.map((v) => { const r = js.filter((x) => x.viaje_id === v.id); return { ...v, yo: r.find((x) => x.id === req.u.id)?.estado || null, jugadoras: staff ? r : undefined, cuentas: ESTADOS_VJ.reduce((o, e) => ({ ...o, [e]: r.filter((x) => x.estado === e).length }), {}) }; }));
+});
+app.post('/api/viajes', auth('coordinacion'), async (req, res) => {
+  const b = req.body; if (!str(b.titulo) || !str(b.destino) || !(b.salida_at > 0) || !(b.regreso_at > b.salida_at)) return fail(res, 400, 'Falta título, destino u horas válidas');
+  const v = await one('INSERT INTO viajes(partido_id,titulo,destino,salida_at,regreso_at,transporte,hospedaje,nota) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [b.partido_id || null, str(b.titulo, 120), str(b.destino, 120), b.salida_at, b.regreso_at, str(b.transporte, 100), str(b.hospedaje, 100), str(b.nota, 300)]);
+  await audit(req.u, 'viaje', str(b.titulo, 120)); res.json({ ok: true, id: v.id });
+});
+app.delete('/api/viajes/:id', auth('coordinacion'), async (req, res) => { await q('DELETE FROM viaje_jug WHERE viaje_id=$1', [req.params.id]); await q('DELETE FROM viajes WHERE id=$1', [req.params.id]); res.json({ ok: true }); });
+app.put('/api/viajes/:id/jug', auth('coordinacion'), async (req, res) => { // convocar / cambiar estado en lote; estado null = quitar
+  const { ids, estado } = req.body; if (!Array.isArray(ids) || (estado != null && !ESTADOS_VJ.includes(estado))) return fail(res, 400, 'Datos inválidos');
+  for (const id of ids.slice(0, 100)) estado == null ? await q('DELETE FROM viaje_jug WHERE viaje_id=$1 AND jugadora_id=$2', [req.params.id, id])
+    : await q('INSERT INTO viaje_jug(viaje_id,jugadora_id,estado) VALUES($1,$2,$3) ON CONFLICT(viaje_id,jugadora_id) DO UPDATE SET estado=$3', [req.params.id, id, estado]);
+  res.json({ ok: true });
+});
+app.post('/api/viajes/:id/yo', auth('jugadora'), async (req, res) => { // la jugadora pide ir, confirma o avisa que no puede
+  const v = await one('SELECT titulo FROM viajes WHERE id=$1', [req.params.id]); if (!v) return fail(res, 404, 'Viaje no encontrado');
+  const cur = (await one('SELECT estado FROM viaje_jug WHERE viaje_id=$1 AND jugadora_id=$2', [req.params.id, req.u.id]))?.estado, a = req.body.estado, conv = ['convocada', 'confirmada', 'baja'];
+  const set = (e) => q('INSERT INTO viaje_jug(viaje_id,jugadora_id,estado) VALUES($1,$2,$3) ON CONFLICT(viaje_id,jugadora_id) DO UPDATE SET estado=$3', [req.params.id, req.u.id, e]);
+  if (a === 'quiere' && !cur) await set('quiere');
+  else if (a === 'confirmada' && ['convocada', 'confirmada'].includes(cur)) await set('confirmada');
+  else if (a === 'baja' && ['convocada', 'confirmada'].includes(cur)) await set('baja');
+  else if (a === 'quitar' && cur === 'quiere') await q('DELETE FROM viaje_jug WHERE viaje_id=$1 AND jugadora_id=$2', [req.params.id, req.u.id]);
+  else return fail(res, 400, 'Esa acción no aplica en tu situación');
+  if (a !== 'quitar') notify(['coordinacion'], { title: { quiere: 'Quiere viajar', confirmada: 'Confirmó viaje', baja: 'No puede viajar' }[a], body: `${(await one('SELECT nombre FROM jugadoras WHERE id=$1', [req.u.id])).nombre} · ${v.titulo}`, tag: `vj-${req.params.id}-${req.u.id}` });
+  res.json({ ok: true });
+});
+
 // ---------- solicitudes de servicio (mantenimiento, lavandería, médico…) ----------
 app.post('/api/tickets', auth('jugadora'), async (req, res) => {
   if (!str(req.body.descripcion)) return fail(res, 400, 'Describe qué necesitas');
