@@ -693,6 +693,7 @@ async function cuentasIniciales() {
   }
 }
 await cuentasIniciales();
+if (process.env.RENDER) console.log('Enlace de registro:', `${process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL}/registro?codigo=${await codigoReg()}`);
 await initPush();
 export default app;
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
