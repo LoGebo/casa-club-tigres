@@ -1,5 +1,5 @@
 // Calendario: partidos de la liga, viajes del equipo y convocatorias. Lo usan las tres vistas; edita solo Coordinación.
-import { esc, ACT, st, api, toast, dt, hm, dia, modal, foot, sure, localInput, fromInput } from './ui.js';
+import { crest, esc, ACT, st, api, toast, dt, hm, dia, modal, foot, sure, localInput, fromInput } from './ui.js';
 
 const L = { sub: 'tigres' };
 const TIGRES = /tigres/i, esTigres = (p) => TIGRES.test(p.local) || TIGRES.test(p.visitante);
@@ -12,17 +12,17 @@ ACT.ligaSub = ({ v }) => { L.sub = v; st.rerender(); };
 function partidoCard(p, viaje) {
   const t = esTigres(p), lejos = t && !TIGRES.test(p.local), past = p.inicio_at < Date.now() - 3 * 36e5;
   return `<button class="match ${t ? 'tigres' : ''} ${past ? 'past' : ''}" data-act="partido" data-id="${p.id}">
-    <time>${hm(p.inicio_at)}</time>
-    <span class="teams"><b>${esc(p.local)}</b><i>vs</i><b>${esc(p.visitante)}</b></span>
-    <small>${p.jornada ? `J${p.jornada} · ` : ''}${esc(p.sede || (lejos ? 'Visita' : ''))}${p.resultado ? ` · <b>${esc(p.resultado)}</b>` : ''}</small>
-    ${viaje ? '<span class="badge gold">Viaje</span>' : lejos ? '<span class="badge">Visita</span>' : ''}${p.demo ? '<span class="badge">Ejemplo</span>' : ''}</button>`;
+    <span class="when"><b>${new Date(p.inicio_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })}</b>${p.jornada ? `<small>J${p.jornada}</small>` : ''}</span>
+    <span class="vs"><span class="tm">${crest(p.local)}<b>${esc(p.local)}</b></span><span class="tm">${crest(p.visitante)}<b>${esc(p.visitante)}</b></span></span>
+    <span class="meta">${p.resultado ? `<b class="res">${esc(p.resultado)}</b>` : viaje ? '<span class="badge gold">Viaje</span>' : lejos ? '<span class="badge">Visita</span>' : ''}${p.demo ? '<small>Ejemplo</small>' : ''}</span>
+    ${p.sede ? `<small class="sede">${esc(p.sede)}</small>` : ''}</button>`;
 }
 
 function partidos(ps, vs) {
   const lista = L.sub === 'tigres' ? ps.filter(esTigres) : ps;
   const grupos = Object.values(lista.reduce((o, p) => { (o[new Date(p.inicio_at).toDateString()] ||= []).push(p); return o; }, {})).map((g) => [0, g]);
   const proximo = lista.find((p) => p.inicio_at >= Date.now() - 3 * 36e5);
-  const hero = proximo && L.sub === 'tigres' ? `<div class="next"><small>Próximo partido</small><h2>${esc(proximo.local)} <i>vs</i> ${esc(proximo.visitante)}</h2><p>${dia(proximo.inicio_at)} · ${hm(proximo.inicio_at)}${proximo.sede ? ' · ' + esc(proximo.sede) : ''}</p></div>` : '';
+  const hero = proximo && L.sub === 'tigres' ? `<div class="next"><small>Próximo partido</small><div class="faceoff"><span>${crest(proximo.local)}<b>${esc(proximo.local)}</b></span><i>vs</i><span>${crest(proximo.visitante)}<b>${esc(proximo.visitante)}</b></span></div><p>${dia(proximo.inicio_at)} · ${hm(proximo.inicio_at)}${proximo.sede ? ' · ' + esc(proximo.sede) : ''}</p></div>` : '';
   return hero + (grupos.map(([, g]) => `<h3 class="dayh">${dia(g[0].inicio_at)}</h3><div class="list">${g.map((p) => partidoCard(p, vs.some((v) => v.partido_id === p.id))).join('')}</div>`).join('')
     || `<div class="empty">Aún no hay partidos cargados.${edita() ? '<br>Toca “+ Partido” o “Importar”.' : '<br>Coordinación los publicará aquí.'}</div>`);
 }

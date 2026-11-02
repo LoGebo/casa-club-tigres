@@ -1,5 +1,5 @@
 import * as liga from './v-liga.js';
-import { $, esc, ACT, st, api, toast, dt, hm, mins, badge, sev, modal, foot, ask, sure, ic, hoyStr } from './ui.js';
+import { avatar, $, esc, ACT, st, api, toast, dt, hm, mins, badge, sev, modal, foot, ask, sure, ic, hoyStr } from './ui.js';
 // Barra inferior: 4 principales + «Más» (Conteo, Visitas, Incidencias)
 export const tabs = [['scan', 'Escanear', 'scan'], ['jug', 'Jugadoras', 'users'], ['reg', 'Registro', 'list'], ['cal', 'Calendario', 'cal'], ['fuera', 'Afuera', 'out'], ['conteo', 'Conteo', 'check'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert']];
 export const live = ['jug', 'fuera', 'reg', 'visitas', 'incid'];
@@ -27,7 +27,7 @@ const PRI = { tarde: 0, fuera: 1, habilitada: 2, proximo: 3, dentro: 4 };
 const BADGE = { tarde: ['bad', 'Atrasada'], fuera: ['gold', 'Afuera'], habilitada: ['ok', 'Puede salir'], proximo: ['warn', 'Permiso próximo'], dentro: ['', 'Dentro'] };
 const linea = (x, c) => (['tarde', 'fuera'].includes(c) ? `${esc(x.destino)} · con ${esc(x.acompanante)} · regresa ${hm(x.regreso_at)}` : ['habilitada', 'proximo'].includes(c) ? `${esc(x.destino)} · con ${esc(x.acompanante)} · ${dt(x.salida_at)} → ${hm(x.regreso_at)}` : 'Dentro de Casa Club · sin permiso');
 const FILTRO = { todas: () => true, afuera: (c) => ['tarde', 'fuera'].includes(c), permiso: (c) => ['habilitada', 'proximo'].includes(c), dentro: (c) => c === 'dentro' };
-const celdas = (rows) => rows.filter((x) => FILTRO[JF](x.c) && (!JQ || x.nombre.toLowerCase().includes(JQ))).map((x) => `<button class="cell" data-act="ficha" data-id="${x.id}"><span class="grow"><span class="row between"><span><b>${esc(x.nombre)}</b>${x.habitacion ? ` <small>· hab ${esc(x.habitacion)}</small>` : ''}</span><span class="badge ${BADGE[x.c][0]}">${BADGE[x.c][1]}</span></span><small>${linea(x, x.c)}</small></span>${chev}</button>`).join('') || '<div class="empty">Sin resultados</div>';
+const celdas = (rows) => rows.filter((x) => FILTRO[JF](x.c) && (!JQ || x.nombre.toLowerCase().includes(JQ))).map((x) => `<button class="cell" data-act="ficha" data-id="${x.id}">${avatar(x.nombre)}<span class="grow"><span class="row between"><span><b>${esc(x.nombre)}</b>${x.habitacion ? ` <small>· hab ${esc(x.habitacion)}</small>` : ''}</span><span class="badge ${BADGE[x.c][0]}">${BADGE[x.c][1]}</span></span><small>${linea(x, x.c)}</small></span>${chev}</button>`).join('') || '<div class="empty">Sin resultados</div>';
 
 export async function view(tab) {
   if (tab === 'cal') return liga.view();

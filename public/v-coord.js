@@ -1,5 +1,5 @@
 import * as liga from './v-liga.js';
-import { $, esc, ACT, st, api, toast, dt, hm, dia, mins, badge, sev, modal, foot, ask, sure, localInput, fromInput, hoyStr } from './ui.js';
+import { avatar, $, esc, ACT, st, api, toast, dt, hm, dia, mins, badge, sev, modal, foot, ask, sure, localInput, fromInput, hoyStr } from './ui.js';
 export const tabs = [['hoy', 'Hoy', 'home'], ['permisos', 'Permisos', 'out'], ['cal', 'Calendario', 'cal'], ['jug', 'Jugadoras', 'users'], ['visitas', 'Visitas', 'door'], ['incid', 'Incidencias', 'alert'], ['serv', 'Servicios', 'tool'], ['com', 'Comunicar', 'bell'], ['rep', 'Reportes', 'chart'], ['equipo', 'Equipo', 'cog']];
 export const live = ['hoy', 'permisos', 'incid'];
 export const badges = async () => { const d = await api('/dashboard'); return { permisos: d.por_resolver || '', visitas: d.visitas_pend || '', incid: d.incidencias || '', serv: d.tickets || '' }; };
@@ -18,9 +18,8 @@ function permCard(p) {
     ${auth ? `<small>Autorizado por: ${auth}</small>` : ''}${p.estado === 'rechazado' && p.nota ? `<small>Rechazo: ${esc(p.nota)}</small>` : ''}
     ${abierta ? `<div class="row">${p.menor ? `<button class="btn sm wa" data-act="padres" data-id="${p.id}">${p.estado === 'pendiente' ? 'Enviar a tutor por WhatsApp' : 'Reenviar WhatsApp'}</button>` : ''}<button class="btn sm ghost" data-act="autorizar" data-id="${p.id}" data-menor="${p.menor ? 1 : ''}">Autorizar yo</button><button class="btn sm danger" data-act="rechazar" data-id="${p.id}">Rechazar</button></div>` : ''}</div>`;
 }
-const jugCard = (j) => `<div class="card tight" ${j.activa ? '' : 'style="opacity:.55"'}><div class="row between"><b>${esc(j.nombre)}</b><span class="badge">${j.menor ? 'menor' : 'mayor'}${j.habitacion ? ' · hab ' + esc(j.habitacion) : ''}</span></div>
-  <small>Clave: ${esc(j.clave)} · Tutor: ${esc(j.tutor_nombre || '—')} ${tel(j.tutor_tel)}</small>${j.alergias ? `<small>Alergias: <b>${esc(j.alergias)}</b></small>` : ''}
-  <img alt="QR de ${esc(j.nombre)}" width="130" height="130" loading="lazy" src="/api/qr?d=${encodeURIComponent(j.qr)}"><div class="row no-print"><button class="btn sm ghost" data-act="jugForm" data-id="${j.id}">Editar</button></div></div>`;
+const jugRow = (j) => `<button class="cell" ${j.activa ? '' : 'style="opacity:.55"'} data-act="jugFicha" data-id="${j.id}">${avatar(j.nombre)}<span class="grow"><b>${esc(j.nombre)}</b><small>${j.habitacion ? 'Hab. ' + esc(j.habitacion) + ' · ' : ''}${j.menor ? 'Menor de edad' : 'Mayor de edad'}${j.alergias ? ' · ⚠ alergias' : ''}</small></span><svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>`;
+const jugQr = (j) => `<div class="card tight"><b>${esc(j.nombre)}</b><small>Hab. ${esc(j.habitacion || '—')}</small><img alt="QR de ${esc(j.nombre)}" width="150" height="150" src="/api/qr?d=${encodeURIComponent(j.qr)}"></div>`;
 
 export async function view(tab) {
   if (tab === 'cal') return liga.view();
@@ -31,9 +30,9 @@ export async function view(tab) {
   }
   if (tab === 'jug') {
     const js = await api('/jugadoras');
-    const lista = (v) => js.filter((j) => !v || (j.nombre + (j.habitacion || '')).toLowerCase().includes(v.toLowerCase())).map(jugCard).join('') || empty('Sin resultados');
+    const lista = (v) => js.filter((j) => !v || (j.nombre + (j.habitacion || '')).toLowerCase().includes(v.toLowerCase())).map(jugRow).join('') || empty('Sin resultados');
     return { html: `<div class="sec no-print"><h2>Jugadoras (${js.filter((j) => j.activa).length})</h2><div class="row"><button class="btn sm ghost" onclick="print()">Imprimir QRs</button><button class="btn sm gold" data-act="jugForm">+ Agregar</button></div></div>
-      <label class="no-print">Buscar<input id="qj" type="search" placeholder="Nombre o habitación" autocomplete="off"></label><div class="list cols print-grid" id="jl">${lista('')}</div>`,
+      <label class="no-print">Buscar<input id="qj" type="search" placeholder="Nombre o habitación" autocomplete="off"></label><div class="list no-print" id="jl">${lista('')}</div><div class="print-qrs print-grid">${js.filter((j) => j.activa).map(jugQr).join('')}</div>`,
     after: () => { $('#qj').oninput = (e) => { $('#jl').innerHTML = lista(e.target.value.trim()); }; } };
   }
   if (tab === 'visitas') {
@@ -152,3 +151,12 @@ Object.assign(ACT, {
   async staffPin({ id }) { const p = await ask('Nuevo PIN', 'PIN (4 a 8 dígitos)', { ok: 'Cambiar' }); if (!p) return; await api('/staff/' + id, 'PATCH', { pin: p }); toast('PIN actualizado'); },
   async staffActivo({ id, a }) { await api('/staff/' + id, 'PATCH', { activo: !!+a }); st.rerender(); },
 });
+
+ACT.jugFicha = async ({ id }) => {
+  const j = (await api('/jugadoras')).find((x) => x.id === +id); if (!j) return;
+  const d = modal(`<div class="fhead">${avatar(j.nombre)}<div><h2>${esc(j.nombre)}</h2><p class="muted">${j.menor ? 'Menor de edad' : 'Mayor de edad'}${j.habitacion ? ' · Hab. ' + esc(j.habitacion) : ''}</p></div></div>
+    <div class="kv"><div><span>Clave</span><b>${esc(j.clave)}</b></div><div><span>Tutor</span><b>${esc(j.tutor_nombre || '—')}</b></div><div><span>Teléfono</span><b>${tel(j.tutor_tel)}</b></div>${j.alergias ? `<div><span>Alergias</span><b>${esc(j.alergias)}</b></div>` : ''}</div>
+    <div class="qrbox"><img alt="QR de ${esc(j.nombre)}" src="/api/qr?d=${encodeURIComponent(j.qr)}"><small>Pase de acceso</small></div>
+    <div class="row"><button type="button" class="btn grow" autofocus data-act="jugForm" data-id="${j.id}">Editar datos</button><button type="button" class="btn ghost" data-act="cerrar">Cerrar</button></div>`, () => {});
+  d.addEventListener('click', (e) => { if (e.target.closest('[data-act=jugForm]')) d.close(); });
+};

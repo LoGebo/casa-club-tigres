@@ -246,3 +246,52 @@ html { background: oklch(21% .09 262); }
 .tabbar button[aria-current="page"] .ic { fill: color-mix(in oklab, currentColor 28%, transparent); stroke-width: 1.9; }
 .sticky-bar { max-width: 480px; }
 @media (min-width: 600px) { body { background: oklch(21% .09 262); } .shell { margin-block: 0; } }
+
+/* ---------- v3: escudos, avatares, estados vacíos, objetivos táctiles de 44 pt ---------- */
+.top .left { gap: 8px; } .top .left:has(.back) .logo { display: none; }
+.logo { width: 34px; height: 34px; border-radius: 10px; }
+.logo:has(img) { background: transparent; border-radius: 0; }
+.top .logo:has(img) { background: transparent; }
+.brandmark .logo:has(img) { width: 92px; height: 92px; background: transparent; filter: drop-shadow(0 6px 14px oklch(0% 0 0 / .35)); }
+.avatar { width: 40px; height: 40px; position: relative; } .avatar::after { content: ""; position: absolute; inset: -2px; }
+.av { width: 42px; height: 42px; flex: none; border-radius: 50%; background: var(--navy); color: var(--gold); display: grid; place-items: center; font-weight: 700; font-size: .875rem; letter-spacing: .02em; box-shadow: inset 0 0 0 2px oklch(82% .16 88 / .55); }
+.cell .grow b { font-size: 1.0625rem; } .cell { min-height: 68px; }
+.fhead { display: flex; align-items: center; gap: 14px; } .fhead .av { width: 56px; height: 56px; font-size: 1.125rem; } .fhead h2 { font-size: 1.375rem; }
+.btn { min-height: 50px; } .btn.sm { min-height: 44px; } .sec .btn.gold { min-height: 44px; padding: 8px 18px; }
+.seg { padding: 3px; border-radius: 11px; } .seg button { min-height: 40px; font-size: .875rem; border-radius: 9px; }
+.chk input { width: 26px; height: 26px; }
+
+/* estados vacíos con icono */
+.empty { padding: 36px 20px 32px; font-size: .9375rem; line-height: 1.4; }
+.empty::before { content: ""; display: block; width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 50%; background: var(--tint-weak) center / 26px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23193a8c' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5'/%3E%3C/svg%3E"); }
+
+/* escudos */
+.crest { width: 30px; height: 30px; object-fit: contain; flex: none; }
+.crest.mono { display: grid; place-items: center; border-radius: 50%; background: var(--navy); color: var(--gold); font-size: .6875rem; font-weight: 700; }
+.match { grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 12px 16px; min-height: 72px; }
+.match .when { display: grid; gap: 1px; justify-items: start; grid-row: 1; } .match .when b { color: var(--tint); font-variant-numeric: tabular-nums; font-size: .9375rem; } .match .when small { color: var(--label-3); }
+.match .vs { display: grid; gap: 6px; min-width: 0; } .match .tm { display: flex; align-items: center; gap: 10px; min-width: 0; } .match .tm b { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match .meta { display: grid; justify-items: end; gap: 2px; grid-row: 1; grid-column: 3; } .match .res { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.match .sede { grid-column: 2 / -1; grid-row: 2; color: var(--label-2); } .match time { display: none; }
+.match .badge { grid-column: auto; grid-row: auto; display: inline-block; }
+.faceoff { display: flex; align-items: center; justify-content: space-around; gap: 10px; padding: 10px 0 4px; }
+.faceoff span { display: grid; justify-items: center; gap: 8px; flex: 1; min-width: 0; text-align: center; }
+.faceoff .crest { width: 64px; height: 64px; } .faceoff .crest.mono { font-size: 1.125rem; } .faceoff b { font-size: 1.0625rem; } .faceoff i { font-style: normal; opacity: .55; font-weight: 500; }
+.next { border-left: 0; border-top: 4px solid var(--gold); text-align: center; } .next p { text-align: center; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .empty::before { filter: invert(1) hue-rotate(180deg); } }
+
+/* impresión de QRs */
+.print-qrs { display: none; }
+@media print { #jl { display: none !important; } .print-qrs { display: grid !important; } }
+/* v3.1 */
+.top .club { display: block; font-weight: 700; font-size: 1rem; letter-spacing: -.01em; color: var(--on-navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .ttl { display: none; } .top.scrolled .ttl { display: none; }
+.match { grid-template-columns: 52px minmax(0, 1fr) auto; } .match .when b { white-space: nowrap; font-size: 1rem; } .match .when small { font-size: .75rem; }
+dialog .qrbox img { width: min(100%, 190px); }
+.empty { padding: 26px 16px 22px; } .empty::before { width: 42px; height: 42px; margin-bottom: 8px; background-size: 22px; }
+.top .left:has(.back) .club { display: none; }
+/* v3.2 */
+.top { display: flex; justify-content: space-between; gap: 12px; }
+.top .left { flex: 1; min-width: 0; } .top .right { flex: none; }
+.match { grid-template-columns: 62px minmax(0, 1fr) auto; }
+.match .when small { grid-column: auto; }

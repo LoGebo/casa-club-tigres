@@ -8,7 +8,7 @@ const app = $('#app');
 const ROLES = { jugadora, seguridad, coordinacion: coord };
 const MAX_TABS = 5; // iOS: la barra inferior admite hasta 5; si hay más, 4 + «Más»
 let timer = null, io = null, hasLogo = false;
-fetch('/brand/logo.png', { method: 'HEAD' }).then((r) => { hasLogo = r.ok; }).catch(() => {});
+const logoReady = fetch('/brand/logo.png', { method: 'HEAD' }).then((r) => { hasLogo = r.ok; }).catch(() => {});
 
 st.onLogout = () => { localStorage.removeItem('cc'); st.S = null; st.tab = null; seguridad.stop(); location.hash = ''; render(); };
 st.rerender = () => render();
@@ -75,7 +75,7 @@ async function tutorView(tok) {
 }
 
 async function render() {
-  clearTimeout(timer);
+  clearTimeout(timer); await logoReady;
   const m = location.hash.match(/^#\/p\/(.+)$/); if (m) return tutorView(m[1]);
   if (!st.S) { try { st.cfg = await api('/config'); } catch {} return loginView(); }
   const role = st.S.rol, R = ROLES[role];

@@ -71,3 +71,12 @@ ACT.push = async () => {
 };
 ACT.pin = () => modal(`<h2>Cambiar mi PIN</h2><label>PIN actual<input name="actual" type="password" inputmode="numeric" required autocomplete="current-password"></label><label>PIN nuevo (4 a 8 dígitos)<input name="nuevo" type="password" inputmode="numeric" pattern="\\d{4,8}" required autocomplete="new-password"></label>${foot()}`,
   async (f, d) => { await api('/pin', 'PATCH', f); d.close(); toast('PIN actualizado'); });
+
+// Avatar con iniciales y escudo de equipo (imagen local o monograma si no hay)
+export const avatar = (n = '') => `<span class="av" aria-hidden="true">${esc(n.split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase())}</span>`;
+const norm = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const ESCUDO = { tigres: 'tigres', rayadas: 'rayadas', monterrey: 'rayadas', america: 'america', pachuca: 'pachuca', chivas: 'chivas', guadalajara: 'chivas', 'cruz azul': 'cruz-azul', pumas: 'pumas', atlas: 'atlas', juarez: 'juarez', necaxa: 'necaxa', leon: 'leon' };
+export const crest = (team = '') => {
+  const k = Object.keys(ESCUDO).find((x) => norm(team).includes(x));
+  return k ? `<img class="crest" src="/brand/teams/${ESCUDO[k]}.png" alt="" loading="lazy">` : `<span class="crest mono" aria-hidden="true">${esc(norm(team).replace(/[^a-z ]/g, '').trim().slice(0, 2).toUpperCase() || '?')}</span>`;
+};
