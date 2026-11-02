@@ -11,9 +11,16 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
-      - key: DATABASE_URL        # cadena de conexión de Neon (…?sslmode=require)
-        sync: false
+      - key: DATABASE_URL        # base gratis creada por Render y conectada sola (expira a los 30 días: migrar a Neon pegando su cadena aquí)
+        fromDatabase:
+          name: casa-club-db
+          property: connectionString
       - key: SECRET              # firma de sesiones; no cambiarla después (cierra todas las sesiones)
         generateValue: true
       - key: TZ_CLUB
         value: America/Monterrey
+
+databases:
+  - name: casa-club-db
+    plan: free
+    region: oregon
