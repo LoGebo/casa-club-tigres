@@ -3,16 +3,16 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, View } from 'react-native';
 
-import { SheetScreen } from '@/components/form';
+import { SheetScreen, TextField } from '@/components/form';
 import { notify, run } from '@/components/notify';
-import { Badge, Button, Card, Empty, Icon, Loading, Screen, T } from '@/components/ui';
+import { Badge, Button, Card, Empty, Group, Icon, Loading, Screen, T } from '@/components/ui';
 import { Space } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { dt, PromptDialog } from '@/features/coord/util';
 
 type Permiso = {
   id: number; jugadora: string; menor?: boolean; estado: string; tipo: string; destino: string; ubicacion?: string; acompanante: string; motivo?: string;
-  salida_at: number; regreso_at: number; metodo_auth?: string; nota?: string; padre_decision_at?: number; viaje_id?: number | null; titulo?: string;
+  tutor_nombre?: string; tutor_tel?: string; salida_at: number; regreso_at: number; metodo_auth?: string; nota?: string; padre_decision_at?: number; viaje_id?: number | null; titulo?: string;
 };
 type Envio = { jugadora: string; whatsapp: string | null; whatsapp_codigo: string | null };
 type Tone = 'neutral' | 'ok' | 'warn' | 'bad' | 'gold' | 'tint';
@@ -28,6 +28,7 @@ export default function Permisos() {
   const [refreshing, setRefreshing] = useState(false);
   const [envio, setEnvio] = useState<Envio | null>(null);
   const [paso, setPaso] = useState(0);
+  const [aviso, setAviso] = useState<{ p: Permiso; tel: string } | null>(null);
   const [dlg, setDlg] = useState<{ p: Permiso; accion: 'autorizar' | 'rechazar' } | null>(null);
 
   const load = useCallback(async () => {
@@ -99,6 +100,24 @@ export default function Permisos() {
         ) : null}
       </Modal>
 
+      <Modal visible={!!aviso} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAviso(null)}>
+        {aviso ? (
+          <SheetScreen title="Avisar al tutor" onClose={() => setAviso(null)}>
+            <T v="sub" dim>El permiso de {aviso.p.jugadora} quedó autorizado. La app no puede mandar WhatsApp sola: toca el botón y se abre tu WhatsApp con el mensaje listo; solo falta darle enviar. Puedes cambiar el número si quieres avisar a otra persona.</T>
+            <Group>
+              <TextField label={`Teléfono de ${aviso.p.tutor_nombre || 'mamá, papá o tutor'}`} value={aviso.tel} onChangeText={(v) => setAviso({ ...aviso, tel: v })} keyboardType="phone-pad" />
+            </Group>
+            <Button title="Avisar por WhatsApp" disabled={aviso.tel.replace(/\D/g, '').length < 10} icon={<Icon sf="paperplane.fill" ion="send" size={18} color="#fff" />}
+              onPress={async () => {
+                const d = aviso.tel.replace(/\D/g, ''), n = d.length === 10 ? '52' + d : d;
+                const msg = `Hola ${aviso.p.tutor_nombre || ''}, te avisamos de Casa Club Femenil Tigres: el permiso de ${aviso.p.jugadora} fue AUTORIZADO.\n\nDestino: ${aviso.p.destino}\nAcompañante: ${aviso.p.acompanante}\nSalida: ${dt(aviso.p.salida_at)}\nRegreso: ${dt(aviso.p.regreso_at)}`;
+                await Linking.openURL(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`);
+              }} />
+            <Button title="Ahora no" kind="plain" onPress={() => setAviso(null)} />
+          </SheetScreen>
+        ) : null}
+      </Modal>
+
       <PromptDialog
         visible={!!dlg}
         title={dlg?.accion === 'autorizar' ? 'Autorizar sin respuesta digital' : 'Rechazar permiso'}
@@ -110,7 +129,10 @@ export default function Permisos() {
         onSubmit={async (nota) => {
           if (!dlg) return;
           const okk = await run(() => api(`/permisos/${dlg.p.id}/${dlg.accion}`, 'POST', { nota }));
-          if (okk) { notify(dlg.accion === 'autorizar' ? 'Autorizado' : 'Permiso rechazado'); setDlg(null); await load(); }
+          if (okk) {
+            notify(dlg.accion === 'autorizar' ? 'Autorizado' : 'Permiso rechazado'); setDlg(null); await load();
+            if (dlg.accion === 'autorizar' && dlg.p.menor) setAviso({ p: dlg.p, tel: dlg.p.tutor_tel ?? '' }); // ofrece avisar a mamá/papá
+          }
         }}
       />
     </Screen>

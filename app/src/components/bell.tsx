@@ -1,7 +1,7 @@
 // Campana con contador de no leídas (bandeja de notificaciones). Se actualiza cada 30 s y al volver a la pantalla.
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/ui';
 import { brand } from '@/constants/theme';
@@ -11,6 +11,11 @@ import { api } from '@/lib/api';
 export const useNoLeidas = () => {
   const [n, setN] = useState(0);
   const cargar = useCallback(() => { api<{ sin_leer: number }>('/notificaciones').then((r) => setN(r.sin_leer)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    void (n ? nav.setAppBadge?.(n) : nav.clearAppBadge?.())?.catch?.(() => {});
+  }, [n]);
   useEffect(() => { cargar(); const t = setInterval(cargar, 30_000); return () => clearInterval(t); }, [cargar]);
   return { n, recargar: cargar };
 };

@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { notify } from '@/components/notify';
-import { Button, Icon } from '@/components/ui';
+import { Button, Icon, T } from '@/components/ui';
 import { Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -25,10 +25,19 @@ export function QrScanner({ onCode, title = 'Escanear QR de la jugadora', contin
 
   useFocusEffect(useCallback(() => () => { setCam(false); lock.current = false; }, []));
 
+  const [falla, setFalla] = useState('');
   const abrir = async () => {
     if (cam) return setCam(false);
+    setFalla('');
+    if (Platform.OS === 'web') {
+      const ua = navigator.userAgent;
+      if (/FBAN|FBAV|Instagram|Line\/|; wv\)|WhatsApp/i.test(ua) || !navigator.mediaDevices?.getUserMedia) {
+        return setFalla('Este navegador no deja usar la cámara (por ejemplo, el que se abre dentro de WhatsApp). Abre el enlace en Safari o Chrome, o instala la app en la pantalla de inicio. Mientras tanto, busca a la jugadora por nombre.');
+      }
+      if (!window.isSecureContext) return setFalla('La cámara solo funciona con conexión segura (https).');
+    }
     const p = perm?.granted ? perm : await askPerm();
-    if (!p.granted) return notify('Permite la cámara en Ajustes o busca por nombre');
+    if (!p.granted) { setFalla('La cámara está bloqueada. En iPhone: Ajustes > Safari > Cámara > Permitir (o toca “aA” en la barra > Ajustes del sitio web > Cámara). Luego vuelve a intentar.'); return; }
     lock.current = false; setCam(true);
   };
   const leido = ({ data }: { data: string }) => {
@@ -43,11 +52,13 @@ export function QrScanner({ onCode, title = 'Escanear QR de la jugadora', contin
     <>
       {cam ? (
         <View style={{ aspectRatio: 1, borderRadius: Radius.l, overflow: 'hidden', backgroundColor: '#000' }}>
-          <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={leido} />
+          <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={leido}
+            onMountError={(e) => { setCam(false); setFalla('No se pudo abrir la cámara: ' + (e?.message || 'error desconocido') + '. Cierra otras apps que la usen o busca por nombre.'); }} />
         </View>
       ) : null}
       <Button title={cam ? 'Cerrar cámara' : title} kind={cam ? 'tinted' : 'filled'} onPress={abrir}
         icon={<Icon sf="qrcode.viewfinder" ion="qr-code" size={22} color={cam ? t.tint : t.bg === '#000000' ? '#071647' : '#FFFFFF'} />} />
+      {falla ? <T v="sub" color={t.bad}>{falla}</T> : null}
     </>
   );
 }

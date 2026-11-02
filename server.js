@@ -184,7 +184,7 @@ app.patch('/api/pin', auth(), async (req, res) => {
 });
 app.get('/api/me', auth('jugadora'), async (req, res) => { const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.u.id]); res.json({ ...pub(j), qr: 'CCF:' + j.qr, ...(await mia(j.id)) }); });
 const mia = async (id) => ({ fuera: await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [id]) });
-app.get('/api/qr', async (req, res) => res.type('image/svg+xml').send(await QRCode.toString(String(req.query.d || '').slice(0, 200), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })));
+app.get('/api/qr', async (req, res) => res.type('image/svg+xml').send(await QRCode.toString(String(req.query.d || '').slice(0, 200), { type: 'svg', margin: 4, errorCorrectionLevel: 'M' })));
 app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club, categorias: c.categorias }); res.json({ categorias: c.categorias, tel_medico: c.tel_medico, escala_min: c.escala_min, toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
 app.put('/api/config', auth('coordinacion'), async (req, res) => {
   for (const k of Object.keys(DEFAULTS)) if (req.body[k] != null) await setConfig(k, String(req.body[k]).slice(0, 200));
@@ -283,7 +283,7 @@ app.post('/api/permisos', auth('jugadora', 'coordinacion'), async (req, res) => 
   const p = await one('INSERT INTO permisos(jugadora_id,tipo,destino,acompanante,ubicacion,motivo,salida_at,regreso_at,creado_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
     [jid, b.tipo === 'pernocta' ? 'pernocta' : 'salida', str(b.destino, 120), str(b.acompanante, 120), str(b.ubicacion, 200), str(b.motivo, 200), b.salida_at, b.regreso_at, Date.now()]);
   await audit(req.u, 'permiso_solicitud', p.id);
-  if (req.u.rol === 'jugadora') notify(['coordinacion'], { title: 'Nueva solicitud de permiso', body: `${str(b.destino, 60)}`, tag: 'sol-' + p.id });
+  if (req.u.rol === 'jugadora') notify(['coordinacion'], { title: 'Nueva solicitud de permiso', body: `${str(b.destino, 60)}`, tag: 'sol-' + p.id, ruta: '/coord/permisos' });
   res.json({ ok: true });
 });
 app.get('/api/permisos', auth('jugadora', 'coordinacion'), async (req, res) => {

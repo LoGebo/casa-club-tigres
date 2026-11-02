@@ -27,6 +27,8 @@ export default function Cuenta() {
   const [borrando, setBorrando] = useState(false);
   const [pinBorrar, setPinBorrar] = useState('');
   const [push, setPush] = useState<PushEstado | null>(null);
+  const ios = Platform.OS === 'web' && typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const instalada = Platform.OS === 'web' && typeof window !== 'undefined' && ((navigator as Navigator & { standalone?: boolean }).standalone === true || window.matchMedia?.('(display-mode: standalone)').matches);
   const refrescarPush = useCallback(() => { void estadoPush().then(setPush).catch(() => setPush('no_disponible')); }, []);
   useEffect(refrescarPush, [refrescarPush]);
   if (!session) return null;
@@ -74,6 +76,12 @@ export default function Cuenta() {
         </View>
       ) : (
         <>
+          {ios && !instalada ? (
+            <View style={{ backgroundColor: t.warnWeak, borderRadius: 12, padding: Space.m, gap: 4 }}>
+              <T v="headline" color={t.warn}>Instala la app para recibir avisos</T>
+              <T v="sub" dim>En iPhone los avisos solo llegan si la app está en tu pantalla de inicio. Ábrela en Safari (no dentro de WhatsApp), toca Compartir, luego “Agregar a pantalla de inicio”. Ábrela desde ese ícono y activa aquí las notificaciones.</T>
+            </View>
+          ) : null}
           <Group header="Avisos">
             <Row title="Notificaciones del teléfono" subtitle={push === 'bloqueadas' ? 'Toca para abrir Ajustes' : push === 'inactivas' ? 'Toca para activarlas' : undefined}
               trailing={push ? <Badge text={PUSH[push][0]} tone={PUSH[push][1]} /> : undefined}
