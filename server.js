@@ -1,0 +1,394 @@
+import express from 'express';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import QRCode from 'qrcode';
+import webpush from 'web-push';
+import { q, one, config, setConfig, audit, DEFAULTS } from './db.js';
+
+const __dir = path.dirname(fileURLToPath(import.meta.url));
+const DATA = process.env.DATA_DIR || path.join(__dir, 'data');
+fs.mkdirSync(DATA, { recursive: true });
+
+// ---------- seguridad básica ----------
+const secretFile = path.join(DATA, 'secret');
+if (!process.env.SECRET && !fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
+const SECRET = process.env.SECRET || fs.readFileSync(secretFile, 'utf8'); // en hosting sin disco persistente: define SECRET
+export const hashPin = (pin) => { const s = crypto.randomBytes(8).toString('hex'); return s + ':' + crypto.scryptSync(String(pin), s, 32).toString('hex'); };
+const okPin = (pin, h) => { const [s, x] = h.split(':'); const y = crypto.scryptSync(String(pin), s, 32).toString('hex'); return crypto.timingSafeEqual(Buffer.from(x), Buffer.from(y)); };
+const sign = (o) => { const p = Buffer.from(JSON.stringify(o)).toString('base64url'); return p + '.' + crypto.createHmac('sha256', SECRET).update(p).digest('base64url'); };
+const verify = (t = '') => {
+  const [p, s] = t.split('.'); if (!p || !s) return null;
+  const e = crypto.createHmac('sha256', SECRET).update(p).digest('base64url');
+  if (s.length !== e.length || !crypto.timingSafeEqual(Buffer.from(s), Buffer.from(e))) return null;
+  const o = JSON.parse(Buffer.from(p, 'base64url').toString()); return o.exp > Date.now() ? o : null;
+};
+const intentos = new Map(); // ponytail: en memoria, un solo proceso; mover a tabla si hay varias instancias
+const strike = (ip) => { const a = (intentos.get(ip) || []).filter((t) => t > Date.now() - 10 * 60e3); a.push(Date.now()); intentos.set(ip, a); };
+const bloqueado = (ip) => (intentos.get(ip) || []).filter((t) => t > Date.now() - 10 * 60e3).length >= 10;
+
+const app = express();
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '50kb' }));
+app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' }); next(); });
+
+const auth = (...roles) => (req, res, next) => {
+  const u = verify((req.get('authorization') || '').replace('Bearer ', ''));
+  if (!u || (roles.length && !roles.includes(u.rol))) return res.status(401).json({ error: 'Sesión no válida' });
+  req.u = u; next();
+};
+const STAFF = ['seguridad', 'coordinacion'];
+const fail = (res, c, m) => res.status(c).json({ error: m });
+const edad = (nac) => Math.floor((Date.now() - new Date(nac).getTime()) / 31557600000);
+const tel = (t = '') => { const d = String(t).replace(/\D/g, ''); return d.length === 10 ? '52' + d : d; };
+const TZ = process.env.TZ_CLUB || 'America/Monterrey';
+const hora = (ms) => new Date(ms).toLocaleString('es-MX', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const wa = (j, msg) => (j.tutor_tel ? `https://wa.me/${tel(j.tutor_tel)}?text=${encodeURIComponent(msg)}` : null);
+const str = (v, n = 300) => (v == null ? null : String(v).trim().slice(0, n) || null);
+const esMenor = (j) => edad(j.nacimiento) < 18;
+const pub = (j) => ({ id: j.id, clave: j.clave, nombre: j.nombre, nacimiento: j.nacimiento, menor: esMenor(j), habitacion: j.habitacion, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, emergencia_nombre: j.emergencia_nombre, emergencia_tel: j.emergencia_tel, alergias: j.alergias, notas_medicas: j.notas_medicas, activa: j.activa });
+const efectivo = (p) => (['pendiente', 'esperando_padres', 'autorizado'].includes(p.estado) && p.regreso_at < Date.now() ? 'vencido' : p.estado);
+const conJug = 'SELECT p.*, j.nombre AS jugadora, j.clave, j.nacimiento, j.tutor_nombre, j.tutor_tel FROM permisos p JOIN jugadoras j ON j.id=p.jugadora_id';
+const fmt = (p) => ({ ...p, padre_token: undefined, padre_ip: undefined, padre_ua: undefined, estado: efectivo(p), menor: p.nacimiento ? edad(p.nacimiento) < 18 : undefined });
+const min = (c, k) => Number(c[k]) * 60e3;
+
+// ---------- notificaciones push (opcional: el usuario debe activarlas) ----------
+let pushOk = false;
+async function initPush() {
+  const c = await config();
+  let pubk = c.vapid_pub, privk = c.vapid_priv;
+  if (!pubk) { const k = webpush.generateVAPIDKeys(); pubk = k.publicKey; privk = k.privateKey; await setConfig('vapid_pub', pubk); await setConfig('vapid_priv', privk); }
+  webpush.setVapidDetails('mailto:' + (process.env.CONTACT_EMAIL || 'admin@casaclub.local'), pubk, privk);
+  pushOk = pubk;
+}
+async function notify(roles, payload) {
+  if (!pushOk) return;
+  for (const s of await q('SELECT * FROM push_subs WHERE rol = ANY($1::text[])', [roles]))
+    webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload)).catch((e) => { if ([404, 410].includes(e.statusCode)) q('DELETE FROM push_subs WHERE id=$1', [s.id]); });
+}
+app.get('/api/push/key', auth(...STAFF), (req, res) => res.json({ key: pushOk || null }));
+app.post('/api/push/sub', auth(...STAFF), async (req, res) => {
+  const { endpoint, keys } = req.body.sub || {}; if (!endpoint || !keys?.p256dh || !keys?.auth) return fail(res, 400, 'Suscripción inválida');
+  await q('INSERT INTO push_subs(rol,user_id,endpoint,p256dh,auth) VALUES($1,$2,$3,$4,$5) ON CONFLICT(endpoint) DO UPDATE SET rol=$1,user_id=$2', [req.u.rol, req.u.id, endpoint, keys.p256dh, keys.auth]);
+  res.json({ ok: true });
+});
+
+// Vigilante: regreso atrasado → incidencia automática + aviso (se ejecuta cada minuto)
+export async function vigilar() {
+  const c = await config();
+  const rows = await q(`${conJug} WHERE p.estado='salio' AND p.alerta_at IS NULL AND p.regreso_at + $1 < $2`, [min(c, 'tolerancia_min'), Date.now()]);
+  for (const p of rows) {
+    await q('UPDATE permisos SET alerta_at=$1 WHERE id=$2', [Date.now(), p.id]);
+    await q("INSERT INTO incidencias(tipo,severidad,jugadora_id,descripcion,creado_at) VALUES('retraso','media',$1,$2,$3)", [p.jugadora_id, `No ha regresado. Debía volver a las ${hora(p.regreso_at)} (destino: ${p.destino}).`, Date.now()]);
+    notify(STAFF, { title: 'Regreso atrasado', body: `${p.jugadora} debía regresar a las ${hora(p.regreso_at)}`, tag: 'retraso-' + p.id });
+  }
+}
+
+// ---------- login / sesión ----------
+app.get('/api/health', (req, res) => res.json({ ok: true })); // para el ping que evita que el hosting gratuito duerma
+app.post('/api/login', async (req, res) => {
+  if (bloqueado(req.ip)) return fail(res, 429, 'Demasiados intentos. Espera 10 minutos.');
+  const uq = String(req.body.usuario || '').trim().toLowerCase(), pin = String(req.body.pin || '');
+  const s = await one('SELECT * FROM staff WHERE usuario=$1 AND activo', [uq]);
+  const j = s ? null : await one('SELECT * FROM jugadoras WHERE lower(clave)=$1 AND activa', [uq]);
+  const x = s || j;
+  if (!x || !okPin(pin, x.pin_hash)) { strike(req.ip); return fail(res, 401, 'Usuario o PIN incorrecto'); }
+  const rol = s ? s.rol : 'jugadora';
+  await audit({ rol, id: x.id }, 'login');
+  res.json({ token: sign({ rol, id: x.id, exp: Date.now() + 30 * 864e5 }), rol, nombre: x.nombre });
+});
+app.patch('/api/pin', auth(), async (req, res) => {
+  const { actual, nuevo } = req.body; if (!/^\d{4,8}$/.test(nuevo || '')) return fail(res, 400, 'El PIN nuevo debe tener de 4 a 8 dígitos');
+  const t = req.u.rol === 'jugadora' ? 'jugadoras' : 'staff';
+  const x = await one(`SELECT pin_hash FROM ${t} WHERE id=$1`, [req.u.id]);
+  if (!x || !okPin(actual || '', x.pin_hash)) return fail(res, 401, 'El PIN actual no es correcto');
+  await q(`UPDATE ${t} SET pin_hash=$1 WHERE id=$2`, [hashPin(nuevo), req.u.id]); res.json({ ok: true });
+});
+app.get('/api/me', auth('jugadora'), async (req, res) => { const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.u.id]); res.json({ ...pub(j), qr: 'CCF:' + j.qr, ...(await mia(j.id)) }); });
+const mia = async (id) => ({ fuera: await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [id]) });
+app.get('/api/qr', async (req, res) => res.type('image/svg+xml').send(await QRCode.toString(String(req.query.d || '').slice(0, 200), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })));
+app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club }); res.json({ toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
+app.put('/api/config', auth('coordinacion'), async (req, res) => {
+  for (const k of Object.keys(DEFAULTS)) if (req.body[k] != null) await setConfig(k, String(req.body[k]).slice(0, 80));
+  await audit(req.u, 'config', JSON.stringify(req.body)); res.json({ ok: true });
+});
+
+// ---------- jugadoras ----------
+app.get('/api/jugadoras', auth(...STAFF), async (req, res) => {
+  const rows = await q('SELECT * FROM jugadoras ORDER BY nombre');
+  res.json(rows.map((j) => (req.u.rol === 'coordinacion' ? { ...pub(j), qr: 'CCF:' + j.qr } : { id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, activa: j.activa })));
+});
+const campos = (b) => [str(b.nombre, 120), str(b.habitacion, 20), str(b.tutor_nombre, 120), str(b.tutor_tel, 20), str(b.emergencia_nombre, 120), str(b.emergencia_tel, 20), str(b.alergias, 300), str(b.notas_medicas, 500)];
+app.post('/api/jugadoras', auth('coordinacion'), async (req, res) => {
+  const b = req.body;
+  if (!b.clave || !b.nombre || !b.nacimiento || !/^\d{4,8}$/.test(b.pin || '')) return fail(res, 400, 'Faltan datos (PIN de 4 a 8 dígitos)');
+  if (edad(b.nacimiento) < 18 && !tel(b.tutor_tel)) return fail(res, 400, 'Para menores el teléfono del tutor es obligatorio');
+  if (await one('SELECT 1 FROM jugadoras WHERE clave=$1', [b.clave.trim().toLowerCase()]) || await one('SELECT 1 FROM staff WHERE usuario=$1', [b.clave.trim().toLowerCase()])) return fail(res, 409, 'Esa clave ya existe');
+  await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,alergias,notas_medicas,pin_hash,qr) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+    [b.clave.trim().toLowerCase(), b.nacimiento, ...campos(b), hashPin(b.pin), crypto.randomBytes(12).toString('hex')]);
+  await audit(req.u, 'jugadora_alta', b.nombre); res.json({ ok: true });
+});
+app.patch('/api/jugadoras/:id', auth('coordinacion'), async (req, res) => {
+  const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.params.id]); if (!j) return fail(res, 404, 'No existe');
+  const b = { ...j, ...Object.fromEntries(Object.entries(req.body).filter(([, v]) => v !== undefined)) };
+  if (req.body.pin && !/^\d{4,8}$/.test(req.body.pin)) return fail(res, 400, 'PIN inválido');
+  await q('UPDATE jugadoras SET nombre=$1,habitacion=$2,tutor_nombre=$3,tutor_tel=$4,emergencia_nombre=$5,emergencia_tel=$6,alergias=$7,notas_medicas=$8,activa=$9,pin_hash=$10 WHERE id=$11',
+    [...campos(b), typeof b.activa === 'boolean' ? b.activa : !!+b.activa, req.body.pin ? hashPin(req.body.pin) : j.pin_hash, j.id]);
+  await audit(req.u, 'jugadora_edit', `${j.nombre} ${Object.keys(req.body).join(',')}`); res.json({ ok: true });
+});
+
+// ---------- permisos ----------
+app.post('/api/permisos', auth('jugadora', 'coordinacion'), async (req, res) => {
+  const b = req.body, jid = req.u.rol === 'jugadora' ? req.u.id : b.jugadora_id;
+  if (!str(b.destino) || !str(b.acompanante)) return fail(res, 400, 'Destino y acompañante son obligatorios');
+  if (!(b.salida_at < b.regreso_at) || b.regreso_at < Date.now()) return fail(res, 400, 'Revisa el horario: el regreso debe ser después de la salida y en el futuro');
+  const c = await config();
+  const n = (await one("SELECT COUNT(*)::int n FROM permisos WHERE jugadora_id=$1 AND estado IN('pendiente','esperando_padres') AND regreso_at>$2", [jid, Date.now()])).n;
+  if (n >= +c.max_pendientes) return fail(res, 429, `Ya hay ${n} solicitudes en espera`);
+  const p = await one('INSERT INTO permisos(jugadora_id,tipo,destino,acompanante,ubicacion,motivo,salida_at,regreso_at,creado_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
+    [jid, b.tipo === 'pernocta' ? 'pernocta' : 'salida', str(b.destino, 120), str(b.acompanante, 120), str(b.ubicacion, 200), str(b.motivo, 200), b.salida_at, b.regreso_at, Date.now()]);
+  await audit(req.u, 'permiso_solicitud', p.id);
+  if (req.u.rol === 'jugadora') notify(['coordinacion'], { title: 'Nueva solicitud de permiso', body: `${str(b.destino, 60)}`, tag: 'sol-' + p.id });
+  res.json({ ok: true });
+});
+app.get('/api/permisos', auth('jugadora', 'coordinacion'), async (req, res) => {
+  const rows = req.u.rol === 'jugadora'
+    ? await q(`${conJug} WHERE p.jugadora_id=$1 ORDER BY p.salida_at DESC LIMIT 50`, [req.u.id])
+    : await q(`${conJug} WHERE p.estado IN('pendiente','esperando_padres','autorizado','salio') OR p.creado_at>$1 ORDER BY p.salida_at ASC LIMIT 300`, [Date.now() - 2 * 864e5]);
+  res.json(rows.map(fmt));
+});
+const decide = (fn) => async (req, res) => {
+  const p = await one(`${conJug} WHERE p.id=$1`, [req.params.id]);
+  if (!p) return fail(res, 404, 'No existe');
+  if (!['pendiente', 'esperando_padres'].includes(p.estado)) return fail(res, 409, 'Esta solicitud ya fue resuelta');
+  await fn(req, res, p);
+};
+app.post('/api/permisos/:id/enviar-padres', auth('coordinacion'), decide(async (req, res, p) => {
+  if (!esMenor(p)) return fail(res, 400, 'Es mayor de edad: autoriza directamente');
+  const tok = p.padre_token || crypto.randomBytes(18).toString('base64url');
+  await q("UPDATE permisos SET estado='esperando_padres', padre_token=$1, padre_enviado_at=$2 WHERE id=$3", [tok, Date.now(), p.id]);
+  const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const msg = `Hola ${p.tutor_nombre || ''}, ${p.jugadora} solicita permiso para salir de Casa Club Femenil Tigres.\n\nDestino: ${p.destino}\nAcompañante: ${p.acompanante}\nSalida: ${hora(p.salida_at)}\nRegreso: ${hora(p.regreso_at)}\n\nPara autorizar o rechazar entra aquí:\n${base}/#/p/${tok}`;
+  await audit(req.u, 'permiso_enviado_tutor', p.id); res.json({ whatsapp: wa(p, msg) });
+}));
+app.post('/api/permisos/:id/autorizar', auth('coordinacion'), decide(async (req, res, p) => {
+  const menor = esMenor(p), nota = str(req.body.nota);
+  if (menor && !nota) return fail(res, 400, 'Para menores sin respuesta digital del tutor, anota cómo se confirmó (ej. llamada a mamá 14:05)');
+  await q("UPDATE permisos SET estado='autorizado', metodo_auth=$1, nota=$2, resuelto_por=$3 WHERE id=$4", [menor ? 'coordinacion_manual' : 'mayor_de_edad', nota, req.u.id, p.id]);
+  await audit(req.u, 'permiso_autorizado', `${p.id} ${nota || ''}`); res.json({ ok: true });
+}));
+app.post('/api/permisos/:id/rechazar', auth('coordinacion'), decide(async (req, res, p) => {
+  await q("UPDATE permisos SET estado='rechazado', nota=$1, resuelto_por=$2 WHERE id=$3", [str(req.body.nota), req.u.id, p.id]);
+  await audit(req.u, 'permiso_rechazado', p.id); res.json({ ok: true });
+}));
+// Salida de emergencia (ambulancia, familiar, etc.): Coordinación crea un permiso ya autorizado y trazable
+app.post('/api/emergencia', auth('coordinacion'), async (req, res) => {
+  const b = req.body, j = await one('SELECT * FROM jugadoras WHERE id=$1 AND activa', [b.jugadora_id]);
+  if (!j || !str(b.motivo) || !str(b.destino)) return fail(res, 400, 'Indica jugadora, motivo y destino');
+  const now = Date.now();
+  await q("INSERT INTO permisos(jugadora_id,tipo,destino,acompanante,motivo,salida_at,regreso_at,estado,creado_at,metodo_auth,nota,resuelto_por) VALUES($1,'salida',$2,$3,$4,$5,$6,'autorizado',$5,'emergencia',$4,$7)",
+    [j.id, str(b.destino, 120), str(b.acompanante, 120) || 'Personal del club', str(b.motivo, 200), now, now + (Number(b.horas) || 6) * 36e5, req.u.id]);
+  await audit(req.u, 'salida_emergencia', `${j.nombre}: ${b.motivo}`); res.json({ ok: true });
+});
+
+// ---------- autorización del tutor (enlace con token aleatorio de un solo uso lógico) ----------
+const porToken = (t) => one(`${conJug} WHERE p.padre_token=$1`, [String(t)]);
+app.get('/api/p/:t', async (req, res) => {
+  const p = await porToken(req.params.t); if (!p) { strike(req.ip); return fail(res, 404, 'Enlace no válido'); }
+  res.json({ jugadora: p.jugadora, destino: p.destino, acompanante: p.acompanante, ubicacion: p.ubicacion, motivo: p.motivo, salida_at: p.salida_at, regreso_at: p.regreso_at, estado: efectivo(p), decision: p.padre_decision, tutor: p.tutor_nombre, tipo: p.tipo });
+});
+app.post('/api/p/:t', async (req, res) => {
+  if (bloqueado(req.ip)) return fail(res, 429, 'Demasiados intentos');
+  const p = await porToken(req.params.t); if (!p) { strike(req.ip); return fail(res, 404, 'Enlace no válido'); }
+  const ok = req.body.decision === 'aprobar';
+  const r = await q("UPDATE permisos SET estado=$1, padre_decision=$2, padre_decision_at=$3, padre_ip=$4, padre_ua=$5, metodo_auth=$6 WHERE id=$7 AND estado='esperando_padres' AND regreso_at>$3 RETURNING id",
+    [ok ? 'autorizado' : 'rechazado', ok ? 'aprobado' : 'rechazado', Date.now(), req.ip, (req.get('user-agent') || '').slice(0, 200), ok ? 'tutor_digital' : null, p.id]);
+  if (!r.length) return fail(res, 409, 'Esta solicitud ya no admite respuesta');
+  notify(['coordinacion'], { title: ok ? 'Tutor autorizó' : 'Tutor rechazó', body: `${p.jugadora}: ${p.destino}`, tag: 'tut-' + p.id });
+  res.json({ ok: true });
+});
+
+// ---------- seguridad: escaneo y movimientos ----------
+async function situacion(j) {
+  const fuera = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [j.id]);
+  if (fuera) return { estado: 'fuera', accion: 'regreso', permiso: fmt(fuera) };
+  const now = Date.now(), c = await config();
+  const ok = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at-$2<=$3 AND p.regreso_at>=$3 ORDER BY p.salida_at LIMIT 1`, [j.id, min(c, 'gracia_min'), now]);
+  if (ok) return { estado: 'autorizada', accion: 'salida', permiso: fmt(ok) };
+  const prox = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at>$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
+  return { estado: 'sin_permiso', accion: null, proximo: prox ? fmt(prox) : null };
+}
+const ficha = async (j) => ({ id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, menor: esMenor(j), emergencia: { nombre: j.emergencia_nombre || j.tutor_nombre, tel: j.emergencia_tel || j.tutor_tel, alergias: j.alergias }, ...(await situacion(j)) });
+app.get('/api/scan/:qr', auth(...STAFF), async (req, res) => {
+  const j = await one('SELECT * FROM jugadoras WHERE qr=$1 AND activa', [req.params.qr.replace(/^CCF:/, '')]);
+  j ? res.json(await ficha(j)) : fail(res, 404, 'Código no reconocido');
+});
+app.get('/api/jugadoras/:id/situacion', auth(...STAFF), async (req, res) => {
+  const j = await one('SELECT * FROM jugadoras WHERE id=$1 AND activa', [req.params.id]);
+  j ? res.json(await ficha(j)) : fail(res, 404, 'No existe');
+});
+app.post('/api/mov', auth(...STAFF), async (req, res) => {
+  const j = await one('SELECT * FROM jugadoras WHERE id=$1 AND activa', [req.body.jugadora_id]);
+  if (!j) return fail(res, 404, 'No existe');
+  const s = await situacion(j), tipo = req.body.tipo;
+  if (s.accion !== tipo) return fail(res, 409, s.accion ? 'El estado cambió, vuelve a escanear' : 'Sin permiso vigente: NO puede salir');
+  const now = Date.now();
+  // Un solo statement atómico: solo registra si el permiso sigue en el estado esperado (evita doble salida por doble toque)
+  const r = await q(`WITH u AS (UPDATE permisos SET estado=$1 WHERE id=$2 AND estado=$3 RETURNING id) INSERT INTO movimientos(jugadora_id,permiso_id,tipo,at,staff_id) SELECT $4::int,id,$5::text,$6::float8,$7::int FROM u RETURNING id`,
+    [tipo === 'salida' ? 'salio' : 'regreso', s.permiso.id, tipo === 'salida' ? 'autorizado' : 'salio', j.id, tipo, now, req.u.id]);
+  if (!r.length) return fail(res, 409, 'El estado cambió, vuelve a escanear');
+  const p = s.permiso;
+  const msg = tipo === 'salida'
+    ? `Casa Club Femenil Tigres: ${j.nombre} salió a las ${hora(now)} con destino ${p.destino} (acompañante: ${p.acompanante}). Regreso previsto: ${hora(p.regreso_at)}.`
+    : `Casa Club Femenil Tigres: ${j.nombre} regresó a las ${hora(now)}. ¡Todo en orden!`;
+  res.json({ ok: true, whatsapp: wa(j, msg) });
+});
+app.get('/api/fuera', auth(...STAFF), async (req, res) => {
+  const rows = await q(`${conJug} WHERE p.estado='salio'`);
+  const out = [];
+  for (const p of rows) out.push({ ...fmt(p), salio_at: (await one("SELECT at FROM movimientos WHERE permiso_id=$1 AND tipo='salida'", [p.id]))?.at, atrasada: p.regreso_at < Date.now() });
+  res.json(out.sort((a, b) => a.regreso_at - b.regreso_at));
+});
+app.get('/api/historial', auth('coordinacion'), async (req, res) => {
+  const d = new Date(req.query.fecha ? req.query.fecha + 'T00:00:00' : Date.now()); d.setHours(0, 0, 0, 0);
+  res.json(await q('SELECT m.*, j.nombre jugadora, p.destino, p.acompanante, s.nombre staff FROM movimientos m JOIN jugadoras j ON j.id=m.jugadora_id JOIN permisos p ON p.id=m.permiso_id LEFT JOIN staff s ON s.id=m.staff_id WHERE m.at>=$1 AND m.at<$2 ORDER BY m.at DESC', [d.getTime(), d.getTime() + 864e5]));
+});
+
+// ---------- conteo (pase de lista / toque de queda) ----------
+app.get('/api/conteo', auth(...STAFF), async (req, res) => res.json(await q("SELECT j.id, j.nombre, j.habitacion, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera, (SELECT destino FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio' LIMIT 1) AS destino FROM jugadoras j WHERE j.activa ORDER BY j.nombre")));
+app.post('/api/conteo', auth(...STAFF), async (req, res) => {
+  const presentes = new Set((req.body.presentes || []).map(Number));
+  const lista = await q("SELECT j.id, j.nombre, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera FROM jugadoras j WHERE j.activa");
+  const dentro = lista.filter((j) => !j.fuera), ausentes = dentro.filter((j) => !presentes.has(j.id));
+  for (const j of ausentes) await q("INSERT INTO incidencias(tipo,severidad,jugadora_id,descripcion,creado_por,creado_at) VALUES('conteo','urgente',$1,'No localizada en el conteo, aunque no registra salida.',$2,$3)", [j.id, req.u.id, Date.now()]);
+  await q('INSERT INTO conteos(at,staff_id,total,presentes,detalle) VALUES($1,$2,$3,$4,$5)', [Date.now(), req.u.id, dentro.length, dentro.length - ausentes.length, JSON.stringify({ ausentes: ausentes.map((j) => j.nombre), fuera: lista.filter((j) => j.fuera).map((j) => j.nombre) })]);
+  if (ausentes.length) notify(STAFF, { title: 'ALERTA: jugadora no localizada', body: ausentes.map((j) => j.nombre).join(', '), tag: 'conteo' });
+  res.json({ ok: true, esperadas: dentro.length, ausentes: ausentes.map((j) => j.nombre) });
+});
+app.get('/api/conteos', auth(...STAFF), async (req, res) => res.json(await q('SELECT c.*, s.nombre staff FROM conteos c LEFT JOIN staff s ON s.id=c.staff_id ORDER BY at DESC LIMIT 30')));
+
+// ---------- visitas ----------
+app.post('/api/visitas', auth('jugadora', 'coordinacion'), async (req, res) => {
+  const b = req.body, jid = req.u.rol === 'jugadora' ? req.u.id : b.jugadora_id;
+  if (!str(b.visitante) || !(b.fecha_at > Date.now() - 36e5)) return fail(res, 400, 'Indica el nombre del visitante y una fecha futura');
+  const est = req.u.rol === 'coordinacion' ? 'autorizada' : 'pendiente';
+  const v = await one('INSERT INTO visitas(jugadora_id,visitante,relacion,estado,fecha_at,creado_at,resuelto_por) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id', [jid, str(b.visitante, 120), str(b.relacion, 60), est, b.fecha_at, Date.now(), est === 'autorizada' ? req.u.id : null]);
+  if (req.u.rol === 'jugadora') notify(['coordinacion'], { title: 'Nueva solicitud de visita', body: str(b.visitante, 60), tag: 'vis-' + v.id });
+  res.json({ ok: true });
+});
+app.get('/api/visitas', auth(), async (req, res) => {
+  const base = 'SELECT v.*, j.nombre jugadora FROM visitas v JOIN jugadoras j ON j.id=v.jugadora_id';
+  const rows = req.u.rol === 'jugadora' ? await q(`${base} WHERE v.jugadora_id=$1 ORDER BY v.fecha_at DESC LIMIT 30`, [req.u.id])
+    : req.u.rol === 'seguridad' ? await q(`${base} WHERE v.estado='dentro' OR (v.estado='autorizada' AND v.fecha_at BETWEEN $1 AND $2) ORDER BY v.fecha_at`, [Date.now() - 12 * 36e5, Date.now() + 24 * 36e5])
+      : await q(`${base} WHERE v.estado IN('pendiente','autorizada','dentro') OR v.creado_at>$1 ORDER BY v.fecha_at DESC LIMIT 200`, [Date.now() - 7 * 864e5]);
+  res.json(rows);
+});
+const visitaEstado = (de, a, roles) => [auth(...roles), async (req, res) => {
+  const [set, ps] = { autorizada: ['resuelto_por=$3', [req.u.id]], rechazada: ['resuelto_por=$3, nota=$4', [req.u.id, str(req.body.nota)]], dentro: ['entrada_at=$3, documento=$4', [Date.now(), str(req.body.documento, 60)]], salio: ['salida_at=$3', [Date.now()]] }[a];
+  const r = await q(`UPDATE visitas SET estado='${a}', ${set} WHERE id=$1 AND estado = ANY($2::text[]) RETURNING id`, [req.params.id, de, ...ps]);
+  if (!r.length) return fail(res, 409, 'La visita no está en un estado válido para esta acción');
+  await audit(req.u, 'visita_' + a, req.params.id); res.json({ ok: true });
+}];
+app.post('/api/visitas/:id/autorizar', ...visitaEstado(['pendiente'], 'autorizada', ['coordinacion']));
+app.post('/api/visitas/:id/rechazar', ...visitaEstado(['pendiente'], 'rechazada', ['coordinacion']));
+app.post('/api/visitas/:id/entrada', ...visitaEstado(['autorizada'], 'dentro', STAFF));
+app.post('/api/visitas/:id/salida', ...visitaEstado(['dentro'], 'salio', STAFF));
+
+// ---------- incidencias ----------
+app.post('/api/incidencias', auth(...STAFF), async (req, res) => {
+  const b = req.body; if (!str(b.descripcion)) return fail(res, 400, 'Describe lo ocurrido');
+  const sev = ['baja', 'media', 'urgente'].includes(b.severidad) ? b.severidad : 'media';
+  const i = await one('INSERT INTO incidencias(tipo,severidad,jugadora_id,descripcion,creado_por,creado_at) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [str(b.tipo, 40) || 'otro', sev, b.jugadora_id || null, str(b.descripcion, 800), req.u.id, Date.now()]);
+  if (sev === 'urgente' || req.u.rol === 'seguridad') notify(['coordinacion'], { title: sev === 'urgente' ? 'INCIDENCIA URGENTE' : 'Nueva incidencia', body: str(b.descripcion, 80), tag: 'inc-' + i.id });
+  res.json({ ok: true });
+});
+app.get('/api/incidencias', auth(...STAFF), async (req, res) => res.json(await q("SELECT i.*, j.nombre jugadora FROM incidencias i LEFT JOIN jugadoras j ON j.id=i.jugadora_id WHERE i.estado='abierta' OR i.creado_at>$1 ORDER BY (i.estado='abierta') DESC, i.creado_at DESC LIMIT 100", [Date.now() - 14 * 864e5])));
+app.post('/api/incidencias/:id/atender', auth('coordinacion'), async (req, res) => {
+  await q("UPDATE incidencias SET estado='atendida', resolucion=$1, resuelta_at=$2 WHERE id=$3 AND estado='abierta'", [str(req.body.resolucion, 500), Date.now(), req.params.id]);
+  await audit(req.u, 'incidencia_atendida', req.params.id); res.json({ ok: true });
+});
+
+// ---------- comunicados y agenda ----------
+app.get('/api/avisos', auth(), async (req, res) => res.json(await q('SELECT * FROM avisos WHERE vence_at IS NULL OR vence_at>$1 ORDER BY fijo DESC, creado_at DESC LIMIT 30', [Date.now()])));
+app.post('/api/avisos', auth('coordinacion'), async (req, res) => {
+  if (!str(req.body.titulo)) return fail(res, 400, 'Falta el título');
+  await q('INSERT INTO avisos(titulo,cuerpo,fijo,creado_at,vence_at) VALUES($1,$2,$3,$4,$5)', [str(req.body.titulo, 120), str(req.body.cuerpo, 1000), !!req.body.fijo, Date.now(), req.body.vence_at || null]); res.json({ ok: true });
+});
+app.delete('/api/avisos/:id', auth('coordinacion'), async (req, res) => { await q('DELETE FROM avisos WHERE id=$1', [req.params.id]); res.json({ ok: true }); });
+app.get('/api/agenda', auth(), async (req, res) => {
+  const d = new Date(req.query.dia ? req.query.dia + 'T00:00:00' : Date.now()); d.setHours(0, 0, 0, 0);
+  const dias = Math.min(+req.query.dias || 1, 14);
+  res.json(await q('SELECT * FROM agenda WHERE inicio_at>=$1 AND inicio_at<$2 ORDER BY inicio_at', [d.getTime(), d.getTime() + dias * 864e5]));
+});
+app.post('/api/agenda', auth('coordinacion'), async (req, res) => {
+  const b = req.body; if (!str(b.titulo) || !(b.inicio_at > 0)) return fail(res, 400, 'Falta título u hora');
+  await q('INSERT INTO agenda(titulo,tipo,inicio_at,fin_at,lugar,nota) VALUES($1,$2,$3,$4,$5,$6)', [str(b.titulo, 120), str(b.tipo, 20) || 'otro', b.inicio_at, b.fin_at || null, str(b.lugar, 100), str(b.nota, 300)]); res.json({ ok: true });
+});
+app.delete('/api/agenda/:id', auth('coordinacion'), async (req, res) => { await q('DELETE FROM agenda WHERE id=$1', [req.params.id]); res.json({ ok: true }); });
+
+// ---------- solicitudes de servicio (mantenimiento, lavandería, médico…) ----------
+app.post('/api/tickets', auth('jugadora'), async (req, res) => {
+  if (!str(req.body.descripcion)) return fail(res, 400, 'Describe qué necesitas');
+  const cat = ['mantenimiento', 'lavanderia', 'medico', 'alimentos', 'otro'].includes(req.body.categoria) ? req.body.categoria : 'otro';
+  const t = await one('INSERT INTO tickets(jugadora_id,categoria,descripcion,creado_at) VALUES($1,$2,$3,$4) RETURNING id', [req.u.id, cat, str(req.body.descripcion, 500), Date.now()]);
+  notify(['coordinacion'], { title: cat === 'medico' ? 'Solicitud MÉDICA' : 'Nueva solicitud de servicio', body: str(req.body.descripcion, 80), tag: 'tk-' + t.id });
+  res.json({ ok: true });
+});
+app.get('/api/tickets', auth('jugadora', 'coordinacion'), async (req, res) => res.json(req.u.rol === 'jugadora'
+  ? await q('SELECT * FROM tickets WHERE jugadora_id=$1 ORDER BY creado_at DESC LIMIT 30', [req.u.id])
+  : await q("SELECT t.*, j.nombre jugadora, j.habitacion FROM tickets t JOIN jugadoras j ON j.id=t.jugadora_id WHERE t.estado<>'resuelto' OR t.creado_at>$1 ORDER BY (t.estado='resuelto'), t.creado_at DESC LIMIT 100", [Date.now() - 7 * 864e5])));
+app.patch('/api/tickets/:id', auth('coordinacion'), async (req, res) => {
+  const e = ['abierto', 'en_proceso', 'resuelto'].includes(req.body.estado) ? req.body.estado : 'abierto';
+  await q('UPDATE tickets SET estado=$1, respuesta=$2, resuelto_at=$3 WHERE id=$4', [e, str(req.body.respuesta, 300), e === 'resuelto' ? Date.now() : null, req.params.id]); res.json({ ok: true });
+});
+
+// ---------- tablero, reportes, equipo, bitácora ----------
+app.get('/api/dashboard', auth(...STAFF), async (req, res) => {
+  const now = Date.now(), c = await config();
+  res.json(await one(`SELECT (SELECT COUNT(*) FROM jugadoras WHERE activa)::int total,
+    (SELECT COUNT(*) FROM permisos WHERE estado='salio')::int fuera,
+    (SELECT COUNT(*) FROM permisos WHERE estado='salio' AND regreso_at+$2<$1)::int atrasadas,
+    (SELECT COUNT(*) FROM permisos WHERE estado IN('pendiente','esperando_padres') AND regreso_at>=$1)::int por_resolver,
+    (SELECT COUNT(*) FROM visitas WHERE estado='dentro')::int visitas_dentro,
+    (SELECT COUNT(*) FROM visitas WHERE estado='pendiente')::int visitas_pend,
+    (SELECT COUNT(*) FROM incidencias WHERE estado='abierta')::int incidencias,
+    (SELECT COUNT(*) FROM tickets WHERE estado<>'resuelto')::int tickets`, [now, min(c, 'tolerancia_min')]));
+});
+app.get('/api/estadisticas', auth('coordinacion'), async (req, res) => {
+  const c = await config(), dias = Math.min(+req.query.dias || 30, 365);
+  res.json(await q("SELECT j.id, j.nombre, COUNT(m.id) FILTER (WHERE m.tipo='salida')::int salidas, COUNT(m.id) FILTER (WHERE m.tipo='regreso' AND m.at > p.regreso_at + $2)::int tardes FROM jugadoras j LEFT JOIN movimientos m ON m.jugadora_id=j.id AND m.at>$1 LEFT JOIN permisos p ON p.id=m.permiso_id WHERE j.activa GROUP BY j.id, j.nombre ORDER BY tardes DESC, salidas DESC, j.nombre", [Date.now() - dias * 864e5, min(c, 'tolerancia_min')]));
+});
+app.get('/api/reporte.csv', auth('coordinacion'), async (req, res) => {
+  const d = (s, fin) => new Date(s + (fin ? 'T23:59:59' : 'T00:00:00')).getTime();
+  const rows = await q('SELECT m.at, m.tipo, j.nombre jugadora, p.tipo permiso, p.destino, p.acompanante, p.regreso_at, p.metodo_auth, s.nombre staff FROM movimientos m JOIN jugadoras j ON j.id=m.jugadora_id JOIN permisos p ON p.id=m.permiso_id LEFT JOIN staff s ON s.id=m.staff_id WHERE m.at>=$1 AND m.at<=$2 ORDER BY m.at', [d(req.query.desde || '1970-01-01'), d(req.query.hasta || '2100-01-01', 1)]);
+  const e = (v) => { v = v == null ? '' : String(v); return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }; // evita inyección de fórmulas en Excel
+  const f = (v) => '"' + e(v).replace(/"/g, '""') + '"';
+  res.type('text/csv; charset=utf-8').send('﻿' + ['fecha', 'movimiento', 'jugadora', 'tipo_permiso', 'destino', 'acompanante', 'regreso_previsto', 'autorizacion', 'registro'].join(',') + '\n'
+    + rows.map((r) => [new Date(r.at).toLocaleString('es-MX', { timeZone: TZ }), r.tipo, r.jugadora, r.permiso, r.destino, r.acompanante, new Date(r.regreso_at).toLocaleString('es-MX', { timeZone: TZ }), r.metodo_auth, r.staff].map(f).join(',')).join('\n'));
+});
+app.get('/api/staff', auth('coordinacion'), async (req, res) => res.json(await q('SELECT id, usuario, nombre, rol, activo FROM staff ORDER BY rol, nombre')));
+app.post('/api/staff', auth('coordinacion'), async (req, res) => {
+  const b = req.body, u = String(b.usuario || '').trim().toLowerCase();
+  if (!u || !str(b.nombre) || !STAFF.includes(b.rol) || !/^\d{4,8}$/.test(b.pin || '')) return fail(res, 400, 'Faltan datos (PIN de 4 a 8 dígitos)');
+  if (await one('SELECT 1 FROM staff WHERE usuario=$1', [u]) || await one('SELECT 1 FROM jugadoras WHERE lower(clave)=$1', [u])) return fail(res, 409, 'Ese usuario ya existe');
+  await q('INSERT INTO staff(usuario,nombre,rol,pin_hash) VALUES($1,$2,$3,$4)', [u, str(b.nombre, 80), b.rol, hashPin(b.pin)]);
+  await audit(req.u, 'staff_alta', u); res.json({ ok: true });
+});
+app.patch('/api/staff/:id', auth('coordinacion'), async (req, res) => {
+  if (+req.params.id === req.u.id && req.body.activo === false) return fail(res, 400, 'No puedes desactivar tu propio usuario');
+  if (req.body.pin) { if (!/^\d{4,8}$/.test(req.body.pin)) return fail(res, 400, 'PIN inválido'); await q('UPDATE staff SET pin_hash=$1 WHERE id=$2', [hashPin(req.body.pin), req.params.id]); }
+  if (typeof req.body.activo === 'boolean') await q('UPDATE staff SET activo=$1 WHERE id=$2', [req.body.activo, req.params.id]);
+  await audit(req.u, 'staff_edit', req.params.id); res.json({ ok: true });
+});
+app.get('/api/audit', auth('coordinacion'), async (req, res) => res.json(await q('SELECT a.*, s.nombre actor FROM audit a LEFT JOIN staff s ON s.id=a.actor_id AND a.rol IN(\'seguridad\',\'coordinacion\') ORDER BY a.at DESC LIMIT 150')));
+
+app.use(express.static(path.join(__dir, 'public'), { extensions: ['html'] }));
+app.use((e, req, res, next) => { console.error(e); fail(res, 500, 'Error del servidor'); });
+
+await initPush();
+export default app;
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  setInterval(() => vigilar().catch(console.error), 60e3);
+  app.listen(process.env.PORT || 3000, () => console.log('Casa Club en http://localhost:' + (process.env.PORT || 3000)));
+}
