@@ -46,8 +46,29 @@ function Gate() {
             <Stack.Screen name="convocar" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
             <Stack.Screen name="importar" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
+          <Stack.Protected guard={rol === 'jugadora'}>
+            <Stack.Screen name="permiso-nuevo" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="visita-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="ticket-nuevo" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
           {/* AGENT:jugadora-routes */}
+          <Stack.Protected guard={rol === 'seguridad'}>
+            <Stack.Screen name="ficha" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.7, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="incidencia-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
           {/* AGENT:seguridad-routes */}
+          <Stack.Protected guard={rol === 'coordinacion'}>
+            <Stack.Screen name="visita-coord-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="incidencia-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="aviso-nuevo" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="agenda-nueva" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="staff-nuevo" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
+          <Stack.Protected guard={rol === 'coordinacion'}>
+            <Stack.Screen name="permiso-nuevo-coord" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="jugadora-ficha" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="jugadora-form" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.9, 1], sheetGrabberVisible: true, headerShown: false }} />
+          </Stack.Protected>
           {/* AGENT:coord-routes */}
         </Stack>
         <ToastHost />

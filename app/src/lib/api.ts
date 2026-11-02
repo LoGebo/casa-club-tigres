@@ -16,8 +16,8 @@ export const store = {
   },
   async set(s: Session | null) {
     try {
-      if (Platform.OS === 'web') s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY);
-      else s ? await SecureStore.setItemAsync(KEY, JSON.stringify(s)) : await SecureStore.deleteItemAsync(KEY);
+      if (Platform.OS === 'web') { if (s) localStorage.setItem(KEY, JSON.stringify(s)); else localStorage.removeItem(KEY); }
+      else if (s) await SecureStore.setItemAsync(KEY, JSON.stringify(s)); else await SecureStore.deleteItemAsync(KEY);
     } catch {}
   },
 };

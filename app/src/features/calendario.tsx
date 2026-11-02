@@ -34,6 +34,7 @@ export default function Calendario() {
   const t = useTheme();
   const { session } = useAuth();
   const edita = session?.rol === 'coordinacion';
+  const [ahora] = useState(() => Date.now()); // marca estable por render (el calendario se recarga al enfocar)
   const [sub, setSub] = useState<Sub>('tigres');
   const [ps, setPs] = useState<Partido[] | null>(null);
   const [vs, setVs] = useState<Viaje[]>([]);
@@ -53,12 +54,12 @@ export default function Calendario() {
   const por: Record<string, Partido[]> = {};
   lista.forEach((p) => (por[dayKey(p.inicio_at)] ||= []).push(p));
   const dias = Object.keys(por).sort();
-  const hoy = dayKey(Date.now());
-  const proximo = lista.find((p) => p.inicio_at >= Date.now() - 3 * 36e5);
+  const hoy = dayKey(ahora);
+  const proximo = lista.find((p) => p.inicio_at >= ahora - 3 * 36e5);
   const viajeDe = (p: Partido) => vs.some((v) => v.partido_id === p.id);
   const hayDemo = ps.some((p) => p.demo);
 
-  const strip = Array.from({ length: 28 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; });
+  const strip = Array.from({ length: 28 }, (_, i) => { const d = new Date(ahora); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; });
 
   return (
     <Screen
