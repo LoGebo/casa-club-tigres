@@ -41,13 +41,43 @@ CREATE TABLE IF NOT EXISTS partidos(id SERIAL PRIMARY KEY, torneo TEXT, jornada 
 CREATE TABLE IF NOT EXISTS viajes(id SERIAL PRIMARY KEY, partido_id INT REFERENCES partidos(id), titulo TEXT NOT NULL, destino TEXT NOT NULL, salida_at ${T} NOT NULL, regreso_at ${T} NOT NULL, transporte TEXT, hospedaje TEXT, nota TEXT);
 CREATE TABLE IF NOT EXISTS viaje_jug(viaje_id INT NOT NULL REFERENCES viajes(id), jugadora_id INT NOT NULL REFERENCES jugadoras(id), estado TEXT NOT NULL, PRIMARY KEY(viaje_id, jugadora_id));
 CREATE TABLE IF NOT EXISTS push_subs(id SERIAL PRIMARY KEY, rol TEXT NOT NULL, user_id INT NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL);
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS debe_cambiar_pin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS debe_cambiar_pin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS disponibilidad TEXT;
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS disp_nota TEXT;
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS sangre TEXT;
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS seguro TEXT;
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS viaje_id INT;
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS padre_otp TEXT;
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS padre_intentos INT NOT NULL DEFAULT 0;
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS recordatorio_at ${T};
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS alerta2_at ${T};
+ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS cid TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mov_cid ON movimientos(cid) WHERE cid IS NOT NULL;
+CREATE TABLE IF NOT EXISTS recogen(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), nombre TEXT NOT NULL, parentesco TEXT, telefono TEXT, documento TEXT);
+CREATE TABLE IF NOT EXISTS fotos(id SERIAL PRIMARY KEY, data TEXT NOT NULL, mime TEXT NOT NULL, creado_at ${T} NOT NULL, owner_rol TEXT, owner_id INT);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS foto_id INT;
+CREATE TABLE IF NOT EXISTS menu(id SERIAL PRIMARY KEY, fecha TEXT NOT NULL, tipo TEXT NOT NULL, descripcion TEXT NOT NULL, UNIQUE(fecha, tipo));
+CREATE TABLE IF NOT EXISTS comidas(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), fecha TEXT NOT NULL, tipo TEXT NOT NULL, descripcion TEXT, foto_id INT, comentario TEXT, comentario_at ${T}, creado_at ${T} NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_comidas ON comidas(jugadora_id, fecha);
+ALTER TABLE avisos ADD COLUMN IF NOT EXISTS categoria TEXT;
+ALTER TABLE avisos ADD COLUMN IF NOT EXISTS requiere_lectura BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS aviso_lectura(aviso_id INT NOT NULL REFERENCES avisos(id) ON DELETE CASCADE, jugadora_id INT NOT NULL, at ${T} NOT NULL, PRIMARY KEY(aviso_id, jugadora_id));
+ALTER TABLE agenda ADD COLUMN IF NOT EXISTS categoria TEXT;
+ALTER TABLE agenda ADD COLUMN IF NOT EXISTS repite TEXT;
+ALTER TABLE viajes ADD COLUMN IF NOT EXISTS recordado_at ${T};
+CREATE TABLE IF NOT EXISTS viaje_items(id SERIAL PRIMARY KEY, viaje_id INT NOT NULL, texto TEXT NOT NULL, orden INT NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS viaje_check(item_id INT NOT NULL REFERENCES viaje_items(id) ON DELETE CASCADE, jugadora_id INT NOT NULL, at ${T} NOT NULL, PRIMARY KEY(item_id, jugadora_id));
+CREATE TABLE IF NOT EXISTS notificaciones(id SERIAL PRIMARY KEY, rol TEXT NOT NULL, user_id INT NOT NULL, titulo TEXT NOT NULL, cuerpo TEXT, ruta TEXT, at ${T} NOT NULL, leida BOOLEAN NOT NULL DEFAULT FALSE);
+CREATE INDEX IF NOT EXISTS ix_notif ON notificaciones(rol, user_id, at);
+CREATE TABLE IF NOT EXISTS push_tokens(id SERIAL PRIMARY KEY, rol TEXT NOT NULL, user_id INT NOT NULL, token TEXT UNIQUE NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_perm_estado ON permisos(estado);
 CREATE INDEX IF NOT EXISTS ix_perm_jug ON permisos(jugadora_id);
 CREATE INDEX IF NOT EXISTS ix_mov_at ON movimientos(at);
 `.split(';').map((s) => s.trim()).filter(Boolean)) await q(stmt);
 
 // Configuración editable por Coordinación (valores por defecto)
-export const DEFAULTS = { toque_queda: '22:00', gracia_min: '30', tolerancia_min: '10', max_pendientes: '3', tel_coordinacion: '', nombre_club: 'Casa Club Femenil', categorias: 'Sub-15,Sub-17,Sub-19,Sub-23,Primer equipo' };
+export const DEFAULTS = { toque_queda: '22:00', gracia_min: '30', tolerancia_min: '10', max_pendientes: '3', tel_coordinacion: '', nombre_club: 'Casa Club Femenil', categorias: 'Sub-15,Sub-17,Sub-19,Sub-23,Primer equipo', tel_medico: '', escala_min: '20' };
 export async function config() {
   const rows = await q('SELECT clave, valor FROM config');
   return { ...DEFAULTS, ...Object.fromEntries(rows.map((r) => [r.clave, r.valor])) };

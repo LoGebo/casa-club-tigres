@@ -23,11 +23,12 @@ const now = Date.now();
 ok(await call('POST', '/api/permisos', { destino: 'Casa', acompanante: 'Mamá', salida_at: now, regreso_at: now + 36e5 }, ana));
 const pid = (await call('GET', '/api/permisos', null, co)).j[0].id;
 ok(await call('POST', `/api/permisos/${pid}/autorizar`, {}, co), 400);
-const w = (await call('POST', `/api/permisos/${pid}/enviar-padres`, null, co)).j.whatsapp; assert.match(w, /wa\.me\/528112345678/);
-const tok = decodeURIComponent(w).match(/#\/p\/(\S+)/)[1];
+const ep = (await call('POST', `/api/permisos/${pid}/enviar-padres`, null, co)).j, w = ep.whatsapp; assert.match(w, /wa\.me\/528112345678/);
+const tok = decodeURIComponent(w).match(/\/p\/(\S+)/)[1], otp = decodeURIComponent(ep.whatsapp_codigo).match(/es (\d{4})/)[1];
 ok(await call('POST', '/api/mov', { jugadora_id: me.id, tipo: 'salida' }, seg), 409);
-ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar' }));
-ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar' }), 409);
+ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar', codigo: '0000' }), 403);
+ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar', codigo: otp }));
+ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar', codigo: otp }), 409);
 assert.equal((await call('GET', '/api/scan/' + me.qr, null, seg)).j.accion, 'salida');
 ok(await call('POST', '/api/mov', { jugadora_id: me.id, tipo: 'salida' }, seg));
 ok(await call('POST', '/api/mov', { jugadora_id: me.id, tipo: 'salida' }, seg), 409);
@@ -96,4 +97,62 @@ const r1 = await call('POST', '/api/registro', { ...reg, categoria: 'Primer equi
 const lista = (await call('GET', '/api/jugadoras', null, co)).j; assert.equal(lista.find((x) => x.nombre === 'Prof Ejemplo Uno').nivel, 'profesional');
 const pidP = lista.find((x) => x.nombre === 'Prof Ejemplo Uno').id; await call('PATCH', '/api/jugadoras/' + pidP, { categoria: 'Sub-23' }, co);
 assert.equal((await call('GET', '/api/jugadoras', null, co)).j.find((x) => x.id === pidP).nivel, 'fuerzas_basicas');
+
+// ===== etapa 2: viajes = permiso, tutor con código, abordaje, checklist, comedor, avisos, agenda, bandeja, PIN, offline =====
+const carId = (await call('GET', '/api/jugadoras', null, co)).j.find((x) => x.clave === 'caro').id, anaId = me.id;
+const vjx = (await call('POST', '/api/viajes', { titulo: 'Visita a Pachuca', destino: 'Pachuca', salida_at: Date.now() - 6e4, regreso_at: Date.now() + 36e5 * 8 }, co)).j.id;
+const cv = await call('PUT', `/api/viajes/${vjx}/jug`, { ids: [anaId, carId], estado: 'convocada' }, co); ok(cv); assert.equal(cv.j.pendientes_tutor, 1);
+const tut = (await call('GET', `/api/viajes/${vjx}/tutores`, null, co)).j; assert.equal(tut.length, 1); // solo la menor necesita al tutor
+const tTok = decodeURIComponent(tut[0].whatsapp).match(/\/p\/(\S+)/)[1], tOtp = decodeURIComponent(tut[0].whatsapp_codigo).match(/es (\d{4})/)[1];
+let ab = (await call('GET', `/api/viajes/${vjx}/abordaje`, null, seg)).j; assert.equal(ab.total, 2);
+ok(await call('POST', `/api/viajes/${vjx}/abordar`, { jugadora_id: anaId, tipo: 'salida' }, seg), 409); // menor sin autorización del tutor: no sube
+ok(await call('POST', `/api/viajes/${vjx}/abordar`, { jugadora_id: carId, tipo: 'salida', cid: 'x1' }, seg));
+ok(await call('POST', `/api/viajes/${vjx}/abordar`, { jugadora_id: carId, tipo: 'salida', cid: 'x1' }, seg)); // idempotente
+ok(await call('POST', '/api/p/' + tTok, { decision: 'aprobar', codigo: tOtp }));
+ok(await call('POST', `/api/viajes/${vjx}/abordar`, { jugadora_id: anaId, tipo: 'salida' }, seg));
+ab = (await call('GET', `/api/viajes/${vjx}/abordaje`, null, seg)).j; assert.equal(ab.abordaron, 2);
+ok(await call('POST', `/api/viajes/${vjx}/abordar`, { jugadora_id: anaId, tipo: 'regreso' }, seg));
+// checklist
+ok(await call('POST', `/api/viajes/${vjx}/items`, { textos: ['INE', 'Uniforme'] }, co));
+const items = (await call('GET', `/api/viajes/${vjx}/checklist`, null, ana)).j.items; assert.equal(items.length, 2);
+ok(await call('POST', `/api/viajes/${vjx}/check`, { item_id: items[0].id, hecho: true }, ana));
+assert.equal((await call('GET', `/api/viajes/${vjx}/checklist`, null, co)).j.jugadoras.find((x) => x.id === anaId).hechos, 1);
+// baja cancela permiso
+ok(await call('POST', `/api/viajes/${vjx}/yo`, { estado: 'baja' }, await login('caro', '1234')));
+// foto + comedor
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const foto = (await call('POST', '/api/fotos', { data: png }, ana)).j; assert.ok(foto.id);
+assert.equal((await fetch(B + foto.url)).status, 200); assert.equal((await fetch(B + foto.url.replace(/k=.*/, 'k=x'))).status, 403);
+ok(await call('POST', '/api/comidas', { tipo: 'comida', descripcion: 'Pollo y arroz', foto_id: foto.id }, ana));
+ok(await call('POST', '/api/comidas', { tipo: 'comida', descripcion: 'Pollo con verduras' }, ana)); // misma comida = se actualiza
+const cm = (await call('GET', '/api/comidas', null, ana)).j; assert.equal(cm.length, 1); assert.ok(cm[0].foto);
+ok(await call('PATCH', `/api/comidas/${cm[0].id}`, { comentario: 'Buen plato' }, co));
+ok(await call('PUT', '/api/menu', { rows: [{ fecha: new Date().toISOString().slice(0, 10), tipo: 'comida', descripcion: 'Pollo' }] }, co));
+assert.equal((await call('GET', '/api/menu', null, ana)).j.length >= 0, true);
+assert.equal((await call('GET', '/api/comidas/resumen', null, ana)).j.hoy.comida, true);
+// aviso por categoría con lectura; agenda por categoría y repetición
+ok(await call('PATCH', '/api/jugadoras/' + anaId, { categoria: 'Sub-17', disponibilidad: 'recuperacion', sangre: 'O+' }, co));
+const av = (await call('POST', '/api/avisos', { titulo: 'Junta Sub-17', categoria: 'Sub-17', requiere_lectura: true }, co)).j; assert.equal(av.enviado_a, 1);
+assert.equal((await call('GET', '/api/avisos', null, ana)).j[0].leido, false); ok(await call('POST', `/api/avisos/${av.id}/leido`, null, ana));
+assert.equal((await call('GET', `/api/avisos/${av.id}/lecturas`, null, co)).j.filter((x) => x.leido_at).length, 1);
+ok(await call('POST', '/api/agenda', { titulo: 'Entrena Sub-17', inicio_at: Date.now() + 36e5, repite: 'diario', categoria: 'Sub-17' }, co));
+ok(await call('POST', '/api/agenda', { titulo: 'Solo Sub-19', inicio_at: Date.now() + 36e5, categoria: 'Sub-19' }, co));
+const ag = (await call('GET', '/api/agenda?dias=3', null, ana)).j; assert.ok(ag.filter((x) => x.titulo === 'Entrena Sub-17').length >= 2); assert.ok(!ag.some((x) => x.titulo === 'Solo Sub-19'));
+// bandeja
+const nt = (await call('GET', '/api/notificaciones', null, ana)).j; assert.ok(nt.sin_leer >= 2); ok(await call('POST', '/api/notificaciones/leer', {}, ana));
+assert.equal((await call('GET', '/api/notificaciones', null, ana)).j.sin_leer, 0);
+// personas que recogen + ficha
+ok(await call('POST', `/api/jugadoras/${anaId}/recogen`, { nombre: 'Tío Luis', parentesco: 'Tío', telefono: '8100000000' }, co));
+assert.equal((await call('GET', '/api/scan/' + me.qr, null, seg)).j.recogen.length, 1);
+// PIN: obligatorio cambiarlo tras alta/lote, y rechaza PIN débil
+const lc = (await call('POST', '/api/jugadoras/lote', { rows: [{ nombre: 'Pin Cambio', nacimiento: '1999-01-01', telefono: '8100000001' }] }, co)).j.creadas[0];
+const lr = (await call('POST', '/api/login', { usuario: lc.clave, pin: lc.pin })).j; assert.equal(lr.cambiar_pin, true);
+ok(await call('PATCH', '/api/pin', { actual: lc.pin, nuevo: '1234' }, lr.token), 400); ok(await call('PATCH', '/api/pin', { actual: lc.pin, nuevo: '7392' }, lr.token));
+assert.equal((await call('POST', '/api/login', { usuario: lc.clave, pin: '7392' })).j.cambiar_pin, false);
+// offline y resumen y push token
+const of = (await call('GET', '/api/offline', null, seg)).j; assert.ok(of.jugadoras.length >= 3 && of.permisos);
+ok(await call('POST', '/api/mov', { jugadora_id: carId, tipo: 'salida', cid: 'off-1', at: Date.now() - 1000 }, seg), 409); // sin permiso vigente
+const rs = (await call('GET', '/api/resumen', null, co)).j; assert.ok(rs.actual.salidas >= 2);
+ok(await call('POST', '/api/push/expo', { token: 'ExponentPushToken[abc-123]' }, ana)); ok(await call('POST', '/api/push/expo', { token: 'x' }, ana), 400);
+await vigilar();
 console.log('OK'); srv.close(); process.exit(0);
