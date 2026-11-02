@@ -31,6 +31,8 @@ ok(await call('POST', '/api/p/' + tok, { decision: 'aprobar' }), 409);
 assert.equal((await call('GET', '/api/scan/' + me.qr, null, seg)).j.accion, 'salida');
 ok(await call('POST', '/api/mov', { jugadora_id: me.id, tipo: 'salida' }, seg));
 ok(await call('POST', '/api/mov', { jugadora_id: me.id, tipo: 'salida' }, seg), 409);
+const gd = (await call('GET', '/api/guardia', null, seg)).j.find((x) => x.nombre === 'Ana'); assert.equal(gd.estado, 'salio'); assert.equal(gd.destino, 'Casa');
+const rg = (await call('GET', '/api/registro', null, seg)).j; assert.equal(rg.length, 1); assert.equal(rg[0].tipo, 'salida');
 assert.equal((await call('GET', '/api/fuera', null, seg)).j.length, 1);
 assert.equal((await call('GET', '/api/dashboard', null, seg)).j.fuera, 1);
 

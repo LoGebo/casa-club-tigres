@@ -255,6 +255,20 @@ app.get('/api/historial', auth('coordinacion'), async (req, res) => {
   res.json(await q('SELECT m.*, j.nombre jugadora, p.destino, p.acompanante, s.nombre staff FROM movimientos m JOIN jugadoras j ON j.id=m.jugadora_id JOIN permisos p ON p.id=m.permiso_id LEFT JOIN staff s ON s.id=m.staff_id WHERE m.at>=$1 AND m.at<$2 ORDER BY m.at DESC', [d.getTime(), d.getTime() + 864e5]));
 });
 
+// Guardia: todas las jugadoras con su estado y el permiso que importa ahora (afuera, habilitado o el próximo)
+app.get('/api/guardia', auth(...STAFF), async (req, res) => res.json(await q(`SELECT j.id, j.nombre, j.habitacion, p.id AS permiso_id, p.estado, p.tipo, p.destino, p.acompanante, p.ubicacion, p.salida_at, p.regreso_at, p.metodo_auth
+  FROM jugadoras j LEFT JOIN LATERAL (SELECT * FROM permisos x WHERE x.jugadora_id=j.id AND (x.estado='salio' OR (x.estado='autorizado' AND x.regreso_at>=$1)) ORDER BY (x.estado='salio') DESC, x.salida_at LIMIT 1) p ON TRUE
+  WHERE j.activa ORDER BY j.nombre`, [Date.now()])));
+// Registro: bitácora de todas las entradas y salidas del día (jugadoras y visitas)
+app.get('/api/registro', auth(...STAFF), async (req, res) => {
+  const d = new Date(req.query.fecha ? req.query.fecha + 'T00:00:00' : Date.now()); d.setHours(0, 0, 0, 0);
+  res.json(await q(`SELECT * FROM (
+    SELECT m.at, m.tipo, j.nombre, p.destino AS detalle, p.acompanante AS con_quien, s.nombre AS staff, 'jugadora' AS quien FROM movimientos m JOIN jugadoras j ON j.id=m.jugadora_id JOIN permisos p ON p.id=m.permiso_id LEFT JOIN staff s ON s.id=m.staff_id WHERE m.at>=$1 AND m.at<$2
+    UNION ALL SELECT v.entrada_at, 'entrada', v.visitante, 'Visita a ' || j.nombre, v.documento, NULL, 'visita' FROM visitas v JOIN jugadoras j ON j.id=v.jugadora_id WHERE v.entrada_at>=$1 AND v.entrada_at<$2
+    UNION ALL SELECT v.salida_at, 'salida', v.visitante, 'Visita a ' || j.nombre, v.documento, NULL, 'visita' FROM visitas v JOIN jugadoras j ON j.id=v.jugadora_id WHERE v.salida_at>=$1 AND v.salida_at<$2
+  ) t ORDER BY at DESC LIMIT $3`, [d.getTime(), d.getTime() + 864e5, Math.min(+req.query.limit || 500, 500)]));
+});
+
 // ---------- conteo (pase de lista / toque de queda) ----------
 app.get('/api/conteo', auth(...STAFF), async (req, res) => res.json(await q("SELECT j.id, j.nombre, j.habitacion, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera, (SELECT destino FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio' LIMIT 1) AS destino FROM jugadoras j WHERE j.activa ORDER BY j.nombre")));
 app.post('/api/conteo', auth(...STAFF), async (req, res) => {
