@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Casa Club Tigres",
+    "slug": "casa-club",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "casaclub",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "mx.casaclub.femenil",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "mx.casaclub.femenil",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B2265",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B2265",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 140
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Casa Club necesita la cámara para leer el QR de las jugadoras."
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

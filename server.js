@@ -31,6 +31,7 @@ const bloqueado = (ip) => (intentos.get(ip) || []).filter((t) => t > Date.now() 
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '50kb' }));
+app.use('/api', (req, res, next) => { res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' }); req.method === 'OPTIONS' ? res.sendStatus(204) : next(); }); // la app Expo (web/teléfono) llama desde otro origen; la auth es por token Bearer
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' }); next(); });
 
 const auth = (...roles) => (req, res, next) => {
