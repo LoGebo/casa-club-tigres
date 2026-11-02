@@ -12,6 +12,9 @@ export type Jugadora = {
   disponibilidad?: string | null; disp_nota?: string | null; sangre?: string | null; seguro?: string | null;
 };
 
+/** Aviso entre pantallas: la hoja de «persona autorizada» avisa a la ficha para recargar. */
+export const recogenBus = new Set<() => void>();
+
 export type Disp = 'disponible' | 'recuperacion' | 'descanso';
 export const DISP: Record<Disp, string> = { disponible: 'Disponible', recuperacion: 'En recuperación', descanso: 'Descanso' };
 /** null/'' = disponible */

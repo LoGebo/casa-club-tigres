@@ -17,7 +17,7 @@ type Resultado = { creadas: Creada[]; omitidas: Omitida[] };
 const VACIA: Fila = { nombre: '', nacimiento: '', telefono: '', tutor_nombre: '', tutor_tel: '' };
 
 const mensaje = (c: Creada) =>
-  `Hola ${c.nombre.split(' ')[0]}, ya tienes cuenta en la app de Casa Club Femenil.\nUsuario: ${c.clave}\nPIN: ${c.pin}\nCámbialo al entrar (tu inicial → Cambiar PIN).`;
+  `Hola ${c.nombre.split(' ')[0]}, ya tienes cuenta en la app de Casa Club Femenil.\nUsuario: ${c.clave}\nPIN: ${c.pin}\nEs temporal: al entrar por primera vez la app te pedirá elegir tu propio PIN.`;
 const wa = (tel: string | null | undefined, texto: string) => {
   const d = (tel ?? '').replace(/\D/g, '');
   return `https://wa.me/${d.length === 10 ? '52' + d : d}?text=${encodeURIComponent(texto)}`;
@@ -61,7 +61,7 @@ export default function Registro() {
       <SheetScreen title="Cuentas creadas">
         {res.creadas.length ? (
           <>
-            <T v="sub" dim>Entrega a cada jugadora su usuario y PIN. Esta lista no se vuelve a mostrar; ellas pueden cambiar su PIN al entrar.</T>
+            <T v="sub" dim>Entrega a cada jugadora su usuario y PIN temporal. Esta lista no se vuelve a mostrar. Al entrar por primera vez, cada una debe elegir su propio PIN.</T>
             <Group>
               {res.creadas.map((c) => (
                 <Row key={c.clave} minHeight={64} title={c.nombre} subtitle={`Usuario ${c.clave} · PIN ${c.pin}`}

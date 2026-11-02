@@ -12,6 +12,9 @@ const FILAS: { href: string; title: string; sf: string; ion: React.ComponentProp
    { href: 'incidencias', title: 'Incidencias', sf: 'exclamationmark.triangle', ion: 'warning-outline', n: 'incidencias' },
    { href: 'servicios', title: 'Servicios', sf: 'wrench.and.screwdriver', ion: 'construct-outline', n: 'tickets' }],
   [{ href: 'comunicar', title: 'Comunicar', sf: 'megaphone', ion: 'megaphone-outline' },
+   { href: 'horarios', title: 'Horarios por categoría', sf: 'calendar.badge.clock', ion: 'time-outline' },
+   { href: 'comedor', title: 'Comedor', sf: 'fork.knife', ion: 'restaurant-outline' }],
+  [{ href: 'resumen', title: 'Resumen semanal', sf: 'chart.line.uptrend.xyaxis', ion: 'trending-up-outline' },
    { href: 'reportes', title: 'Reportes', sf: 'chart.bar', ion: 'bar-chart-outline' }],
   [{ href: 'equipo', title: 'Equipo y reglas', sf: 'gearshape', ion: 'settings-outline' }],
 ];

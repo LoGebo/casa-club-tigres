@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
+import { Foto } from '@/components/foto';
 import { Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
+import { Space } from '@/constants/theme';
 import { CATEGORIAS, dt, EstadoBadge, useList } from '@/features/jugadora/common';
 import { useTheme } from '@/hooks/use-theme';
 
-type Ticket = { id: number; categoria: string; descripcion: string; estado: string; respuesta?: string; creado_at: number };
+type Ticket = { id: number; categoria: string; descripcion: string; estado: string; respuesta?: string; creado_at: number; foto?: string | null };
 
 export default function Servicios() {
   const { data, refreshing, refresh } = useList<Ticket>('/tickets');
@@ -19,15 +21,21 @@ export default function Servicios() {
           {data.map((k) => (
             <Row key={k.id} minHeight={72} title={CATEGORIAS.find((c) => c[0] === k.categoria)?.[1] ?? k.categoria} trailing={<EstadoBadge e={k.estado} />}
               subtitle={
-                <View style={{ gap: 2 }}>
+                <View style={{ gap: Space.xs + 2 }}>
                   <T v="sub">{k.descripcion}</T>
-                  {k.respuesta ? <T v="caption" dim>Respuesta: {k.respuesta}</T> : null}
+                  <Foto url={k.foto} ratio={16 / 9} />
+                  {k.respuesta ? (
+                    <View style={{ backgroundColor: t.tintWeak, borderRadius: 10, padding: Space.m, gap: 2 }}>
+                      <T v="caption" color={t.tint} style={{ fontWeight: '700' }}>Respuesta de Coordinación</T>
+                      <T v="sub">{k.respuesta}</T>
+                    </View>
+                  ) : null}
                   <T v="caption" dim>{dt(k.creado_at)}</T>
                 </View>
               } />
           ))}
         </Group>
-      ) : <Empty sf="wrench.and.screwdriver" ion="construct-outline" title="Sin solicitudes" />}
+      ) : <Empty sf="wrench.and.screwdriver" ion="construct-outline" title="Sin solicitudes" text="Toca “Nueva solicitud” cuando necesites algo." />}
     </Screen>
   );
 }

@@ -4,12 +4,12 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 
 import { run } from '@/components/notify';
-import { Avatar, Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
+import { Avatar, Badge, Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
 import { Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
 import { useCategorias } from '@/lib/categorias';
-import type { Jugadora } from '@/features/coord/util';
+import { DISP, dispDe, noDisp, type Jugadora } from '@/features/coord/util';
 
 export default function Jugadoras() {
   const t = useTheme();
@@ -43,7 +43,7 @@ export default function Jugadoras() {
       {lista.length ? (
         <Group footer={`${js.filter((j) => j.activa).length} activas`}>
           {lista.map((j) => (
-            <Row key={j.id} minHeight={60} leading={<Avatar name={j.nombre} size={40} />} title={j.nombre} chevron
+            <Row key={j.id} minHeight={60} leading={<Avatar name={j.nombre} size={40} />} title={j.nombre} chevron trailing={noDisp(j) ? <Badge text={DISP[dispDe(j)]} tone="warn" /> : undefined}
               subtitle={`${j.categoria ? `${j.categoria} · ` : ''}${j.habitacion ? `Hab. ${j.habitacion} · ` : ''}${j.menor ? 'Menor' : 'Mayor'} de edad${j.alergias ? ' · alergias' : ''}${j.activa ? '' : ' · inactiva'}`}
               onPress={() => router.push({ pathname: '/jugadora-ficha', params: { id: String(j.id) } })} />
           ))}

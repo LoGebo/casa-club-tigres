@@ -1,8 +1,12 @@
 // Tipos y utilidades compartidas de las pantallas de Seguridad.
 import { useEffect, useState } from 'react';
+import { TextInput, View } from 'react-native';
 
-import { Badge, Row, T } from '@/components/ui';
+import { Badge, Icon, Row, T } from '@/components/ui';
+import { Space } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
+import { textoEdad } from '@/features/seguridad/offline';
 
 export type Permiso = { id: number; destino: string; acompanante: string; ubicacion?: string; salida_at: number; regreso_at: number; metodo_auth?: string };
 export type Situacion = {
@@ -54,3 +58,26 @@ export function MovRow({ m }: { m: Movimiento }) {
   );
 }
 
+
+/** Campo de búsqueda estilo iOS */
+export function SearchBox({ value, onChangeText, placeholder = 'Buscar jugadora' }: { value: string; onChangeText: (s: string) => void; placeholder?: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ backgroundColor: t.fill, borderRadius: 10, paddingHorizontal: Space.m, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Icon sf="magnifyingglass" ion="search" size={16} color={t.label3} />
+      <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={t.label3} autoCorrect={false} clearButtonMode="while-editing"
+        accessibilityLabel={placeholder} style={{ flex: 1, color: t.label, fontSize: 17, paddingVertical: 8 }} />
+    </View>
+  );
+}
+
+/** «Sin conexión · datos de hace N min» */
+export function ChipOffline({ edad }: { edad: number }) {
+  const t = useTheme();
+  return (
+    <View accessibilityRole="text" style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.warnWeak, borderRadius: 999, paddingHorizontal: 12, minHeight: 30 }}>
+      <Icon sf="wifi.slash" ion="cloud-offline-outline" size={14} color={t.warn} />
+      <T v="caption" color={t.warn} style={{ fontWeight: '600' }}>{`Sin conexión · datos de hace ${textoEdad(edad)}`}</T>
+    </View>
+  );
+}

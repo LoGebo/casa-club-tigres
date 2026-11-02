@@ -175,13 +175,19 @@ function Fixture({ p, viaja }: { p: Partido; viaja: boolean }) {
 function TripCard({ v, edita, rol, reload }: { v: Viaje; edita: boolean; rol?: string; reload: () => Promise<void> }) {
   const t = useTheme();
   const c = v.cuentas;
+  const abrir = () => {
+    tap();
+    const pathname = rol === 'coordinacion' ? '/viaje-coord' : rol === 'seguridad' ? '/abordaje' : '/viaje-jugadora';
+    router.push({ pathname, params: { id: String(v.id) } });
+  };
   const yo = async (estado: string, msg: string) => { await run(async () => { await api(`/viajes/${v.id}/yo`, 'POST', { estado }); notify(msg); await reload(); }); };
   return (
     <Card style={{ gap: Space.m }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.s }}>
+      <Pressable onPress={abrir} accessibilityRole="button" accessibilityLabel={`Abrir viaje ${v.titulo}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space.s, minHeight: 44 }}>
         <T v="headline" style={{ flex: 1 }}>{v.titulo}</T>
         {rol === 'jugadora' && v.yo ? <Badge text={ETQ[v.yo][0]} tone={ETQ[v.yo][1]} /> : null}
-      </View>
+        <Icon sf="chevron.right" ion="chevron-forward" size={14} color={t.label3} />
+      </Pressable>
       <Group>
         <Row minHeight={44} title="Destino" trailing={<T v="sub" style={{ fontWeight: '600' }}>{v.destino}</T>} />
         <Row minHeight={44} title="Sale" trailing={<T v="sub" style={{ fontWeight: '600' }}>{corta(v.salida_at)}</T>} />
@@ -195,7 +201,7 @@ function TripCard({ v, edita, rol, reload }: { v: Viaje; edita: boolean; rol?: s
         ))}
       </View>
       {rol !== 'jugadora' && v.jugadoras?.length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{v.jugadoras.map((j) => <Badge key={j.id} text={`${j.nombre.split(' ')[0]} · ${ETQ[j.estado][0]}`} tone={ETQ[j.estado][1]} />)}</View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{v.jugadoras.map((j) => <Badge key={j.id} text={`${j.nombre.split(' ')[0]} · ${ETQ[j.estado]?.[0] ?? j.estado}`} tone={ETQ[j.estado]?.[1] ?? 'neutral'} />)}</View>
       ) : null}
       {rol === 'jugadora' ? (
         v.yo === 'convocada' ? <View style={{ gap: 8 }}><Button title="Confirmo que voy" onPress={() => yo('confirmada', 'Confirmado ✓')} /><Button title="No puedo" kind="tinted" onPress={() => yo('baja', 'Avisaste que no puedes')} /></View>
@@ -203,7 +209,8 @@ function TripCard({ v, edita, rol, reload }: { v: Viaje; edita: boolean; rol?: s
           : v.yo === 'quiere' ? <Button title="Cancelar mi solicitud" kind="tinted" onPress={() => yo('quitar', 'Solicitud cancelada')} />
           : v.yo === 'baja' ? null : <Button title="Quiero ir" kind="gold" onPress={() => yo('quiere', 'Solicitud enviada ✓')} />
       ) : null}
-      {edita ? <View style={{ gap: 8 }}><Button title="Convocar jugadoras" onPress={() => router.push({ pathname: '/convocar', params: { id: String(v.id) } })} /><Button title="Quitar viaje" kind="danger" small onPress={() => run(async () => { await api(`/viajes/${v.id}`, 'DELETE'); await reload(); })} /></View> : null}
+      {edita ? <View style={{ gap: 8 }}><Button title="Administrar viaje" onPress={abrir} /><Button title="Convocar jugadoras" kind="tinted" small onPress={() => router.push({ pathname: '/convocar', params: { id: String(v.id) } })} /></View> : null}
+      {rol === 'seguridad' ? <Button title="Lista de abordaje" kind="tinted" onPress={abrir} /> : null}
     </Card>
   );
 }

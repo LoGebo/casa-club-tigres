@@ -4,16 +4,18 @@ import { useCallback, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import { run } from '@/components/notify';
-import { Button, Card, Empty, Group, Icon, Loading, Row, Screen, T, tap } from '@/components/ui';
+import { Badge, Button, Card, Group, Icon, Loading, Row, Screen, T, tap } from '@/components/ui';
 import { Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
 import { Emergencia } from '@/features/coord/emergencia';
-import { hm, mins, telUrl } from '@/features/coord/util';
+import type { Viaje } from '@/features/calendario';
+import { dt, hm, mins, telUrl } from '@/features/coord/util';
 
 type Dash = { total: number; fuera: number; atrasadas: number; por_resolver: number; visitas_dentro: number; visitas_pend: number; incidencias: number; tickets: number };
-type Fuera = { id: number; jugadora: string; destino: string; acompanante: string; regreso_at: number; atrasada: boolean; tutor_nombre?: string; tutor_tel?: string };
-type Evento = { id: number; titulo: string; inicio_at: number; lugar?: string };
+type Fuera = { id: number; jugadora: string; destino: string; acompanante: string; regreso_at: number; atrasada: boolean; tutor_nombre?: string; tutor_tel?: string; wa_tutor?: string | null };
+type Evento = { id: number; titulo: string; inicio_at: number; lugar?: string; categoria?: string | null };
+type Conteo = { at: number; total: number; presentes: number };
 
 export default function Hoy() {
   const t = useTheme();
@@ -23,10 +25,12 @@ export default function Hoy() {
   const [refreshing, setRefreshing] = useState(false);
   const [emer, setEmer] = useState(false);
   const [ahora, setAhora] = useState(0);
+  const [viaje, setViaje] = useState<Viaje | null>(null);
+  const [conteo, setConteo] = useState<Conteo | null>(null);
 
   const load = useCallback(async () => {
-    const r = await run(() => Promise.all([api<Dash>('/dashboard'), api<Fuera[]>('/fuera'), api<Evento[]>('/agenda')]));
-    if (r) { setAhora(Date.now()); setD(r[0]); setFu(r[1]); setAg(r[2]); }
+    const r = await run(() => Promise.all([api<Dash>('/dashboard'), api<Fuera[]>('/fuera'), api<Evento[]>('/agenda'), api<Viaje[]>('/viajes').catch(() => [] as Viaje[]), api<Conteo[]>('/conteos').catch(() => [] as Conteo[])]));
+    if (r) { const n = Date.now(); setAhora(n); setD(r[0]); setFu(r[1]); setAg(r[2]); setViaje(r[3].find((x) => x.regreso_at >= n) ?? null); setConteo(r[4][0] ?? null); }
   }, []);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -58,25 +62,53 @@ export default function Hoy() {
         ))}
       </View>
 
-      <View style={{ gap: Space.s }}>
-        <T v="title">Requiere atención</T>
-        {late.length ? late.map((p) => (
-          <Card key={p.id}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: Space.s }}>
-              <T v="headline" style={{ flex: 1 }}>{p.jugadora}</T>
-              <T v="sub" color={t.bad} style={{ fontWeight: '600' }}>{mins(ahora - p.regreso_at)} tarde</T>
+      {late.length ? (
+        <View style={{ gap: Space.s }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Space.s }}>
+            <Icon sf="exclamationmark.triangle.fill" ion="warning" color={t.bad} />
+            <T v="title" color={t.bad}>{late.length === 1 ? '1 jugadora no ha regresado' : `${late.length} jugadoras no han regresado`}</T>
+          </View>
+          {late.map((p) => (
+            <View key={p.id} style={{ backgroundColor: t.badWeak, borderRadius: Radius.m, padding: Space.l, gap: Space.s }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: Space.s }}>
+                <T v="headline" style={{ flex: 1 }}>{p.jugadora}</T>
+                <T v="headline" color={t.bad}>{mins(ahora - p.regreso_at)} tarde</T>
+              </View>
+              <T v="sub">{p.destino} · con {p.acompanante}. Debía volver a las {hm(p.regreso_at)}.</T>
+              {p.tutor_tel ? (
+                <View style={{ flexDirection: 'row', gap: Space.s }}>
+                  {p.wa_tutor ? <View style={{ flex: 1 }}><Button small title="Avisar al tutor" icon={<Icon sf="paperplane.fill" ion="send" size={18} color="#fff" />} onPress={() => { void Linking.openURL(p.wa_tutor!); }} /></View> : null}
+                  <View style={{ flex: 1 }}><Button small kind="tinted" title="Llamar" icon={<Icon sf="phone.fill" ion="call" size={18} />} onPress={() => { void Linking.openURL(telUrl(p.tutor_tel!)); }} /></View>
+                </View>
+              ) : <T v="sub" color={t.bad}>Sin teléfono de tutor registrado.</T>}
             </View>
-            <T v="caption" dim>{p.destino} · con {p.acompanante} · debía volver {hm(p.regreso_at)}</T>
-            {p.tutor_tel ? <Button small kind="tinted" title={`Llamar a ${p.tutor_nombre || 'tutor'}`} icon={<Icon sf="phone.fill" ion="call" size={18} />} onPress={() => { void Linking.openURL(telUrl(p.tutor_tel!)); }} /> : null}
+          ))}
+        </View>
+      ) : null}
+
+      <View style={{ gap: Space.s }}>
+        <T v="title">Ahora</T>
+        {!late.length ? <Group><Row leading={<Icon sf="checkmark.circle.fill" ion="checkmark-circle" color={t.ok} />} title="Todo en orden" subtitle="Nadie tiene el regreso vencido." /></Group> : null}
+        <Group>
+          <Row leading={<Icon sf="person.3.fill" ion="people" />} title="Conteo de jugadoras"
+            subtitle={conteo && new Date(conteo.at).toDateString() === new Date(ahora).toDateString() ? `Último a las ${hm(conteo.at)}: ${conteo.presentes} de ${conteo.total} presentes` : 'Hoy todavía no hay conteo. Seguridad lo registra en su turno.'}
+            trailing={conteo && new Date(conteo.at).toDateString() === new Date(ahora).toDateString() ? <Badge text={conteo.presentes === conteo.total ? 'Completo' : 'Faltan'} tone={conteo.presentes === conteo.total ? 'ok' : 'warn'} /> : <Badge text="Pendiente" tone="warn" />} />
+        </Group>
+        {viaje ? (
+          <Card onPress={() => router.push({ pathname: '/viaje-coord', params: { id: String(viaje.id) } })}>
+            <T v="caption" dim style={{ textTransform: 'uppercase' }}>Próximo viaje</T>
+            <T v="headline">{viaje.titulo}</T>
+            <T v="sub" dim>{viaje.destino} · sale {dt(viaje.salida_at)}</T>
+            <T v="sub">{viaje.cuentas.convocada + viaje.cuentas.confirmada} convocadas · {viaje.cuentas.quiere} quieren ir</T>
           </Card>
-        )) : <Empty sf="checkmark.circle" ion="checkmark-circle-outline" title="Todo en orden" />}
+        ) : null}
         <Button title="Salida de emergencia" kind="danger" icon={<Icon sf="cross.case.fill" ion="medkit" size={20} color={t.bad} />} onPress={() => setEmer(true)} />
       </View>
 
       <View style={{ gap: Space.s }}>
         <T v="title">Agenda de hoy</T>
         {ag.length ? (
-          <Group>{ag.map((e) => <Row key={e.id} title={e.titulo} subtitle={e.lugar || undefined} trailing={<T v="sub" dim style={{ fontVariant: ['tabular-nums'] }}>{hm(e.inicio_at)}</T>} />)}</Group>
+          <Group>{ag.map((e) => <Row key={e.id} title={e.titulo} subtitle={e.lugar || undefined} leading={e.categoria ? <Badge text={e.categoria} tone="tint" /> : undefined} trailing={<T v="sub" dim style={{ fontVariant: ['tabular-nums'] }}>{hm(e.inicio_at)}</T>} />)}</Group>
         ) : <T v="sub" dim>Sin actividades. Agrégalas en Más → Agenda.</T>}
       </View>
 

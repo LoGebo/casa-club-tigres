@@ -48,7 +48,7 @@ function Gate() {
             <Stack.Screen name="coord" />
           </Stack.Protected>
           <Stack.Protected guard={dentro}>
-            <Stack.Screen name="cuenta" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.5], sheetGrabberVisible: true, headerShown: false }} />
+            <Stack.Screen name="cuenta" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.75, 1], sheetGrabberVisible: true, headerShown: false }} />
           </Stack.Protected>
           <Stack.Protected guard={dentro}>
             <Stack.Screen name="partido" options={{ presentation: 'formSheet', sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true, headerShown: false }} />

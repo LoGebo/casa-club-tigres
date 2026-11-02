@@ -185,9 +185,9 @@ app.patch('/api/pin', auth(), async (req, res) => {
 app.get('/api/me', auth('jugadora'), async (req, res) => { const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.u.id]); res.json({ ...pub(j), qr: 'CCF:' + j.qr, ...(await mia(j.id)) }); });
 const mia = async (id) => ({ fuera: await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [id]) });
 app.get('/api/qr', async (req, res) => res.type('image/svg+xml').send(await QRCode.toString(String(req.query.d || '').slice(0, 200), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })));
-app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club, categorias: c.categorias }); res.json({ categorias: c.categorias, tel_medico: c.tel_medico, toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
+app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club, categorias: c.categorias }); res.json({ categorias: c.categorias, tel_medico: c.tel_medico, escala_min: c.escala_min, toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
 app.put('/api/config', auth('coordinacion'), async (req, res) => {
-  for (const k of Object.keys(DEFAULTS)) if (req.body[k] != null) await setConfig(k, String(req.body[k]).slice(0, 80));
+  for (const k of Object.keys(DEFAULTS)) if (req.body[k] != null) await setConfig(k, String(req.body[k]).slice(0, 200));
   await audit(req.u, 'config', JSON.stringify(req.body)); res.json({ ok: true });
 });
 
@@ -356,7 +356,8 @@ async function situacion(j, now = Date.now()) {
   const ok = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at-$2<=$3 AND p.regreso_at>=$3 ORDER BY p.salida_at LIMIT 1`, [j.id, min(c, 'gracia_min'), now]);
   if (ok) return { estado: 'autorizada', accion: 'salida', permiso: fmt(ok) };
   const prox = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at>$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
-  return { estado: 'sin_permiso', accion: null, proximo: prox ? fmt(prox) : null };
+  const espera = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='esperando_padres' AND p.regreso_at>=$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
+  return { estado: 'sin_permiso', accion: null, proximo: prox ? fmt(prox) : null, pendiente_tutor: espera ? fmt(espera) : null };
 }
 const ficha = async (j) => ({ id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, categoria: j.categoria, menor: esMenor(j), emergencia: { nombre: j.emergencia_nombre || j.tutor_nombre, tel: j.emergencia_tel || j.tutor_tel, alergias: j.alergias, sangre: j.sangre, seguro: j.seguro, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, tel_medico: (await config()).tel_medico }, recogen: await q('SELECT id, nombre, parentesco, telefono, documento FROM recogen WHERE jugadora_id=$1 ORDER BY id', [j.id]), ...(await situacion(j)) });
 app.get('/api/scan/:qr', auth(...STAFF), async (req, res) => {

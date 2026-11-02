@@ -37,7 +37,7 @@ const setOnline = (v: boolean) => { if (v !== online) { online = v; subs.forEach
 const CK = 'cc-cache:';
 const NO_CACHE = /^\/(fotos|qr|offline)/;
 const ckey = (path: string) => CK + (token ?? '').slice(-16) + ':' + path;
-export async function limpiarCache() { try { const ks = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(CK)); if (ks.length) await AsyncStorage.multiRemove(ks); } catch {} }
+export async function limpiarCache() { try { const ks = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(CK) || k.startsWith('cc-offline') || k.startsWith('cc-cola') || k.startsWith('cc-abordaje')); if (ks.length) await AsyncStorage.multiRemove(ks); } catch {} }
 
 export class ApiError extends Error {}
 

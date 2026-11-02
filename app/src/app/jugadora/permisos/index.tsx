@@ -1,25 +1,35 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
-import { Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
+import { Badge, Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
 import { dt, EstadoBadge, useList } from '@/features/jugadora/common';
 import { useTheme } from '@/hooks/use-theme';
 
-type Permiso = { id: number; tipo: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; estado: string; nota?: string };
+type Permiso = { id: number; tipo: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; estado: string; nota?: string; viaje_id?: number | null; menor?: boolean };
 
 function Detalle({ p }: { p: Permiso }) {
   const t = useTheme();
-  const extra = p.estado === 'rechazado' && p.nota ? `Motivo: ${p.nota}` : p.estado === 'esperando_padres' ? 'Coordinación ya avisó a tu tutor. Falta su respuesta.' : p.estado === 'autorizado' ? 'Muestra tu QR a Seguridad al salir y al regresar.' : null;
+  const viaje = !!p.viaje_id;
+  const extra =
+    p.estado === 'rechazado' && p.nota ? `Motivo: ${p.nota}`
+    : p.estado === 'cancelado' ? (p.nota || 'Este permiso se canceló.')
+    : p.estado === 'esperando_padres' ? (viaje ? 'Esperando la autorización de tu mamá/papá/tutor' : 'Coordinación ya avisó a tu tutor. Falta su respuesta.')
+    : p.estado === 'autorizado' ? (viaje ? 'Autorizado automáticamente por la convocatoria. Muestra tu QR al abordar.' : 'Muestra tu QR a Seguridad al salir y al regresar.')
+    : viaje && p.estado === 'pendiente' ? 'Se autoriza automáticamente cuando confirmes el viaje.'
+    : null;
+  const malo = p.estado === 'rechazado' || p.estado === 'vencido';
   return (
     <Row
       minHeight={72}
+      onPress={viaje ? () => router.push({ pathname: '/viaje-jugadora', params: { id: String(p.viaje_id) } }) : undefined}
+      chevron={viaje}
       title={p.destino}
-      trailing={<EstadoBadge e={p.estado} />}
+      trailing={<View style={{ gap: 4, alignItems: 'flex-end' }}>{viaje ? <Badge text="Viaje" tone="tint" /> : null}<EstadoBadge e={p.estado} /></View>}
       subtitle={
         <View style={{ gap: 2 }}>
           <T v="caption" dim>{p.tipo === 'pernocta' ? 'Pernocta · ' : ''}{dt(p.salida_at)} → {dt(p.regreso_at)}</T>
-          <T v="caption" dim>Con {p.acompanante}</T>
-          {extra ? <T v="caption" color={p.estado === 'rechazado' ? t.bad : t.label2}>{extra}</T> : null}
+          {!viaje ? <T v="caption" dim>Con {p.acompanante}</T> : null}
+          {extra ? <T v="caption" color={malo ? t.bad : p.estado === 'esperando_padres' ? t.warn : t.label2}>{extra}</T> : null}
         </View>
       }
     />

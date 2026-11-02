@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { useCategorias } from '@/lib/categorias';
 import type { Jugadora } from '@/features/coord/util';
 
-const VACIA = { categoria: '', telefono: '', nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '' };
+const VACIA = { categoria: '', telefono: '', nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '', sangre: '', seguro: '', disponibilidad: '', disp_nota: '' };
 const edad = (nac: string) => Math.floor((Date.now() - new Date(nac).getTime()) / 31557600000);
 
 export default function JugadoraForm() {
@@ -39,9 +39,16 @@ export default function JugadoraForm() {
     }
     if (f.nacimiento && edad(f.nacimiento) < 18 && !f.tutor_tel.replace(/\D/g, '')) return notify('Para menores el teléfono del tutor es obligatorio');
     setBusy(true);
-    const r = await run(() => {
-      if (id) { const { clave, nacimiento, pin, ...rest } = f; return api(`/jugadoras/${id}`, 'PATCH', { ...rest, activa, ...(pin ? { pin } : {}) }); }
-      return api('/jugadoras', 'POST', f);
+    const disp = { disponibilidad: f.disponibilidad === 'disponible' ? '' : f.disponibilidad, disp_nota: f.disponibilidad && f.disponibilidad !== 'disponible' ? f.disp_nota : '' };
+    const r = await run(async () => {
+      if (id) { const { clave, nacimiento, pin, ...rest } = f; return api(`/jugadoras/${id}`, 'PATCH', { ...rest, ...disp, activa, ...(pin ? { pin } : {}) }); }
+      const ok = await api('/jugadoras', 'POST', f);
+      // el alta solo guarda lo básico: sangre, seguro y disponibilidad se guardan con un PATCH
+      if (f.sangre || f.seguro || disp.disponibilidad) {
+        const nueva = (await api<Jugadora[]>('/jugadoras')).find((x) => x.clave === f.clave.trim().toLowerCase());
+        if (nueva) await api(`/jugadoras/${nueva.id}`, 'PATCH', { sangre: f.sangre, seguro: f.seguro, ...disp });
+      }
+      return ok;
     });
     setBusy(false);
     if (r) { notify('Guardado'); router.back(); }
@@ -71,6 +78,12 @@ export default function JugadoraForm() {
           <Group header="Salud (solo Coordinación)">
             <TextField label="Alergias" value={f.alergias} onChangeText={set('alergias')} />
             <TextField label="Notas médicas" value={f.notas_medicas} onChangeText={set('notas_medicas')} multiline />
+            <TextField label="Tipo de sangre" value={f.sangre} onChangeText={set('sangre')} placeholder="O+, A-…" autoCapitalize="none" />
+            <TextField label="Seguro médico (aseguradora y póliza)" value={f.seguro} onChangeText={set('seguro')} />
+          </Group>
+          <Group header="Disponibilidad" footer="Si está en recuperación o descanso, la app avisa al convocarla a un viaje.">
+            <Choice options={[['disponible', 'Disponible'], ['recuperacion', 'Recuperación'], ['descanso', 'Descanso']] as const} value={f.disponibilidad || 'disponible'} onChange={set('disponibilidad')} />
+            {f.disponibilidad && f.disponibilidad !== 'disponible' ? <TextField label="Nota (lesión, motivo, hasta cuándo)" value={f.disp_nota} onChangeText={set('disp_nota')} multiline /> : null}
           </Group>
           {id ? <Group><Row title="Activa en casa club" trailing={<Switch value={activa} onValueChange={setActiva} accessibilityLabel="Jugadora activa" />} /></Group> : null}
           <Button title="Guardar" loading={busy} onPress={guardar} />

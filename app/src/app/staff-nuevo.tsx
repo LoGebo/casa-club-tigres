@@ -23,7 +23,7 @@ export default function StaffNuevo() {
   };
   return (
     <SheetScreen title="Agregar personal">
-      <Group>
+      <Group footer="Este PIN es temporal: la persona deberá cambiarlo la primera vez que entre.">
         <TextField label="Nombre" value={nombre} onChangeText={setNombre} autoCapitalize="words" />
         <TextField label="Usuario" value={usuario} onChangeText={setUsuario} autoCapitalize="none" />
         <TextField label="PIN (4 a 8 dígitos)" value={pin} onChangeText={setPin} secure keyboardType="number-pad" />
