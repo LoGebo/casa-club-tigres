@@ -1,5 +1,5 @@
 // Calendario: partidos de la liga, viajes del equipo y convocatorias. Lo usan las tres vistas; edita solo Coordinación.
-import { crest, esc, ACT, st, api, toast, dt, hm, dia, modal, foot, sure, localInput, fromInput } from './ui.js';
+import { ic, crest, esc, ACT, st, api, toast, dt, hm, dia, modal, foot, sure, localInput, fromInput } from './ui.js';
 
 const L = { sub: 'tigres' };
 const TIGRES = /tigres/i, esTigres = (p) => TIGRES.test(p.local) || TIGRES.test(p.visitante);
@@ -7,24 +7,38 @@ const ETQ = { convocada: ['Convocada', 'gold'], confirmada: ['Confirmada', 'ok']
 const chip = (e) => (e ? `<span class="badge ${ETQ[e][1]}">${ETQ[e][0]}</span>` : '');
 const edita = () => st.S.rol === 'coordinacion';
 
+ACT.irDia = ({ d }) => document.getElementById('d-' + d)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 ACT.ligaSub = ({ v }) => { L.sub = v; st.rerender(); };
 
+const ABR = { tigres: 'TIG', rayadas: 'RAY', monterrey: 'RAY', america: 'AME', pachuca: 'PAC', chivas: 'CHI', guadalajara: 'CHI', 'cruz azul': 'CAZ', pumas: 'PUM', atlas: 'ATS', juarez: 'JUA', necaxa: 'NEC', leon: 'LEO', toluca: 'TOL', queretaro: 'QRO', puebla: 'PUE', santos: 'SAN', mazatlan: 'MAZ', tijuana: 'TIJ', 'san luis': 'SLP' };
+const abr = (t) => { const n = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); const k = Object.keys(ABR).find((x) => n.includes(x)); return k ? ABR[k] : n.replace(/[^a-z]/g, '').slice(0, 3).toUpperCase(); };
+const key = (ms) => localInput(ms).slice(0, 10);
+const hora = (ms) => new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+const faltan = (ms) => { const d = Math.round((new Date(key(ms)) - new Date(key(Date.now()))) / 864e5); return d <= 0 ? (ms < Date.now() ? 'En juego o terminado' : 'Hoy') : d === 1 ? 'Mañana' : `En ${d} días`; };
+
 function partidoCard(p, viaje) {
-  const t = esTigres(p), lejos = t && !TIGRES.test(p.local), past = p.inicio_at < Date.now() - 3 * 36e5;
-  return `<button class="match ${t ? 'tigres' : ''} ${past ? 'past' : ''}" data-act="partido" data-id="${p.id}">
-    <span class="when"><b>${new Date(p.inicio_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })}</b>${p.jornada ? `<small>J${p.jornada}</small>` : ''}</span>
-    <span class="vs"><span class="tm">${crest(p.local)}<b>${esc(p.local)}</b></span><span class="tm">${crest(p.visitante)}<b>${esc(p.visitante)}</b></span></span>
-    <span class="meta">${p.resultado ? `<b class="res">${esc(p.resultado)}</b>` : viaje ? '<span class="badge gold">Viaje</span>' : lejos ? '<span class="badge">Visita</span>' : ''}${p.demo ? '<small>Ejemplo</small>' : ''}</span>
-    ${p.sede ? `<small class="sede">${esc(p.sede)}</small>` : ''}</button>`;
+  const t = esTigres(p), past = p.inicio_at < Date.now() - 3 * 36e5;
+  return `<button class="fx ${t ? 'tigres' : ''} ${past ? 'past' : ''}" data-act="partido" data-id="${p.id}" aria-label="${esc(p.local)} contra ${esc(p.visitante)}, ${hora(p.inicio_at)}">
+    <span class="tm">${crest(p.local)}<b>${abr(p.local)}</b></span>
+    <span class="mid">${p.resultado ? `<b class="res">${esc(p.resultado)}</b>` : `<b>${hora(p.inicio_at)}</b>`}<small>${p.jornada ? `J${p.jornada}` : ''}${p.jornada && p.sede ? ' · ' : ''}${esc(p.sede || '')}</small>${viaje ? '<em>Viaja el equipo</em>' : ''}</span>
+    <span class="tm r"><b>${abr(p.visitante)}</b>${crest(p.visitante)}</span></button>`;
 }
 
 function partidos(ps, vs) {
   const lista = L.sub === 'tigres' ? ps.filter(esTigres) : ps;
-  const grupos = Object.values(lista.reduce((o, p) => { (o[new Date(p.inicio_at).toDateString()] ||= []).push(p); return o; }, {})).map((g) => [0, g]);
+  const por = {}; lista.forEach((p) => (por[key(p.inicio_at)] ||= []).push(p));
+  const dias = Object.keys(por).sort(), hoy = key(Date.now());
   const proximo = lista.find((p) => p.inicio_at >= Date.now() - 3 * 36e5);
-  const hero = proximo && L.sub === 'tigres' ? `<div class="next"><small>Próximo partido</small><div class="faceoff"><span>${crest(proximo.local)}<b>${esc(proximo.local)}</b></span><i>vs</i><span>${crest(proximo.visitante)}<b>${esc(proximo.visitante)}</b></span></div><p>${dia(proximo.inicio_at)} · ${hm(proximo.inicio_at)}${proximo.sede ? ' · ' + esc(proximo.sede) : ''}</p></div>` : '';
-  return hero + (grupos.map(([, g]) => `<h3 class="dayh">${dia(g[0].inicio_at)}</h3><div class="list">${g.map((p) => partidoCard(p, vs.some((v) => v.partido_id === p.id))).join('')}</div>`).join('')
-    || `<div class="empty">Aún no hay partidos cargados.${edita() ? '<br>Toca “+ Partido” o “Importar”.' : '<br>Coordinación los publicará aquí.'}</div>`);
+  const hero = proximo && L.sub === 'tigres' ? `<button class="next" data-act="partido" data-id="${proximo.id}"><span class="when">${faltan(proximo.inicio_at)} · ${dia(proximo.inicio_at)}</span>
+    <span class="faceoff"><span>${crest(proximo.local)}<b>${esc(proximo.local)}</b></span><span class="ko"><b>${hora(proximo.inicio_at)}</b><small>hrs</small></span><span>${crest(proximo.visitante)}<b>${esc(proximo.visitante)}</b></span></span>
+    ${proximo.sede ? `<span class="sede">${esc(proximo.sede)}</span>` : ''}</button>` : '';
+  const strip = `<div class="strip" role="group" aria-label="Próximos días">${Array.from({ length: 28 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); const k = key(d.getTime()), g = por[k];
+    return `<button class="sd ${k === hoy ? 'hoy' : ''} ${g ? 'has' : ''}" ${g ? `data-act="irDia" data-d="${k}"` : 'disabled'} aria-label="${dia(d.getTime())}${g ? `, ${g.length} partido(s)` : ''}"><small>${d.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</small><b>${d.getDate()}</b><i class="${g?.some(esTigres) ? 'g' : ''}"></i></button>`; }).join('')}</div>`;
+  let mes = '';
+  const cuerpo = dias.map((k) => { const d = new Date(k + 'T12:00'), m = d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+    const h = m !== mes ? `<h3 class="mh">${m}</h3>` : ''; mes = m;
+    return `${h}<section class="day" id="d-${k}"><div class="dn ${k === hoy ? 'hoy' : ''}"><b>${d.getDate()}</b><small>${d.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</small></div><div class="list">${por[k].map((p) => partidoCard(p, vs.some((v) => v.partido_id === p.id))).join('')}</div></section>`; }).join('');
+  return hero + strip + (cuerpo || `<div class="empty">Aún no hay partidos cargados.${edita() ? '<br>Agrega uno o importa el calendario.' : '<br>Coordinación los publicará aquí.'}</div>`);
 }
 
 function viajeCard(v) {
@@ -44,9 +58,10 @@ function viajeCard(v) {
 export async function view() {
   const [ps, vs] = await Promise.all([api('/partidos'), api('/viajes')]);
   const nuevo = L.sub === 'viajes' ? (edita() ? '<button class="btn gold" data-act="viajeNuevo">+ Viaje</button>' : '') : edita() ? '<button class="btn gold" data-act="partidoNuevo">+ Partido</button>' : '';
-  const tools = edita() && L.sub !== 'viajes' ? `<div class="row no-print"><button class="btn sm ghost" data-act="importar">Importar CSV</button>${ps.some((p) => p.demo) ? '<button class="btn sm ghost" data-act="quitarDemo">Quitar ejemplos</button>' : ''}</div>` : '';
-  const demo = ps.some((p) => p.demo) ? '<p class="note-demo">Los partidos marcados “Ejemplo” son de muestra. Coordinación carga el calendario real.</p>' : '';
-  const body = L.sub === 'viajes' ? (vs.length ? `<div class="list cols">${vs.map(viajeCard).join('')}</div>` : '<div class="empty">No hay viajes programados.</div>') : demo + tools + partidos(ps, vs);
+  const row = (act, ico, txt) => `<button data-act="${act}">${ic(ico)}<span class="grow">${txt}</span></button>`;
+  const tools = edita() && L.sub !== 'viajes' ? `<div class="list menu no-print">${row('importar', 'list', 'Importar calendario (CSV)')}${ps.some((p) => p.demo) ? row('quitarDemo', 'alert', 'Quitar partidos de ejemplo') : ''}</div>` : '';
+  const demo = ps.some((p) => p.demo) ? '<p class="foot">Calendario de ejemplo con fechas inventadas. Coordinación carga el real.</p>' : '';
+  const body = L.sub === 'viajes' ? (vs.length ? `<div class="stack">${vs.map(viajeCard).join('')}</div>` : '<div class="empty">No hay viajes programados.</div>') : partidos(ps, vs) + tools + demo;
   return { html: `<div class="sec"><h2>Calendario</h2>${nuevo}</div><div class="seg" role="group">${[['tigres', 'Tigres'], ['liga', 'Liga'], ['viajes', 'Viajes']].map(([k, l]) => `<button data-act="ligaSub" data-v="${k}" aria-pressed="${L.sub === k}">${l}</button>`).join('')}</div>${body}` };
 }
 
