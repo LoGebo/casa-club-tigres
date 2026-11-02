@@ -9,7 +9,7 @@ import { Button, Group, Loading, Row } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { Jugadora } from '@/features/coord/util';
 
-const VACIA = { nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '' };
+const VACIA = { telefono: '', nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '' };
 const edad = (nac: string) => Math.floor((Date.now() - new Date(nac).getTime()) / 31557600000);
 
 export default function JugadoraForm() {
@@ -53,6 +53,7 @@ export default function JugadoraForm() {
             <TextField label="Nombre completo" value={f.nombre} onChangeText={set('nombre')} autoCapitalize="words" />
             <TextField label="Clave de acceso" value={f.clave} onChangeText={id ? () => {} : set('clave')} autoCapitalize="none" placeholder={id ? undefined : 'p. ej. mgarcia'} />
             <TextField label={id ? 'Nuevo PIN (opcional)' : 'PIN (4 a 8 dígitos)'} value={f.pin} onChangeText={set('pin')} keyboardType="number-pad" secure />
+            <TextField label="Teléfono de la jugadora" value={f.telefono} onChangeText={set('telefono')} keyboardType="phone-pad" />
             <TextField label="Nacimiento (AAAA-MM-DD)" value={f.nacimiento} onChangeText={id ? () => {} : set('nacimiento')} keyboardType="numbers-and-punctuation" placeholder="2008-05-21" />
             <TextField label="Habitación" value={f.habitacion} onChangeText={set('habitacion')} />
           </Group>

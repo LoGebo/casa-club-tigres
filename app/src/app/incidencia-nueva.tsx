@@ -1,5 +1,5 @@
 // Modal: registrar una incidencia.
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { Choice, SheetScreen, TextField } from '@/components/form';
@@ -8,14 +8,15 @@ import { Button, Group } from '@/components/ui';
 import { api } from '@/lib/api';
 import { changed, type Jug } from '@/features/coord-mas/util';
 
-const TIPOS = [['convivencia', 'Convivencia'], ['salud', 'Salud'], ['disciplina', 'Disciplina'], ['seguridad', 'Seguridad'], ['otro', 'Otro']] as const;
+const TIPOS = [['intento_salida', 'Intento de salida'], ['convivencia', 'Convivencia'], ['salud', 'Salud'], ['disciplina', 'Disciplina'], ['seguridad', 'Seguridad'], ['otro', 'Otro']] as const;
 const SEV = [['baja', 'Baja'], ['media', 'Media'], ['urgente', 'Urgente']] as const;
 
 export default function IncidenciaNueva() {
+  const params = useLocalSearchParams<{ jid?: string; tipo?: string }>();
   const [js, setJs] = useState<Jug[]>([]);
-  const [tipo, setTipo] = useState<string>('otro');
+  const [tipo, setTipo] = useState<string>(params.tipo ?? 'otro');
   const [sev, setSev] = useState<'baja' | 'media' | 'urgente'>('media');
-  const [jid, setJid] = useState('');
+  const [jid, setJid] = useState(params.jid ?? '');
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { void run(() => api<Jug[]>('/jugadoras')).then((r) => r && setJs(r.filter((j) => j.activa))); }, []);

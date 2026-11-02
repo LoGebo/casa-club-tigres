@@ -85,4 +85,8 @@ ok(await call('POST', `/api/viajes/${vj}/yo`, { estado: 'confirmada' }, ana));
 let vs = (await call('GET', '/api/viajes', null, seg)).j; assert.equal(vs[0].jugadoras[0].estado, 'confirmada'); assert.equal(vs[0].cuentas.confirmada, 1);
 vs = (await call('GET', '/api/viajes', null, ana)).j; assert.equal(vs[0].yo, 'confirmada'); assert.equal(vs[0].jugadoras, undefined);
 ok(await call('DELETE', `/api/viajes/${vj}`, null, co));
+// registro por lista
+const lote = (await call('POST', '/api/jugadoras/lote', { rows: [{ nombre: 'Lucía Pérez Gómez', nacimiento: '12/03/2009', telefono: '8110000001', tutor_nombre: 'Marta', tutor_tel: '8110000002' }, { nombre: 'Lucía Pérez Gómez', nacimiento: '2009-03-12', tutor_tel: '8110000002' }, { nombre: 'Sin Tutor', nacimiento: '2010-01-01' }, { nombre: 'Mala Fecha', nacimiento: 'xx' }] }, co)).j;
+assert.equal(lote.creadas.length, 2); assert.equal(lote.omitidas.length, 2); assert.notEqual(lote.creadas[0].clave, lote.creadas[1].clave);
+assert.ok(await login(lote.creadas[0].clave, lote.creadas[0].pin)); ok(await call('POST', '/api/jugadoras/lote', { rows: [] }, co), 400); ok(await call('POST', '/api/jugadoras/lote', { rows: [{ nombre: 'X' }] }, seg), 401);
 console.log('OK'); srv.close(); process.exit(0);

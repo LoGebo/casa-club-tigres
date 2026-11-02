@@ -48,7 +48,7 @@ const hora = (ms) => new Date(ms).toLocaleString('es-MX', { timeZone: TZ, weekda
 const wa = (j, msg) => (j.tutor_tel ? `https://wa.me/${tel(j.tutor_tel)}?text=${encodeURIComponent(msg)}` : null);
 const str = (v, n = 300) => (v == null ? null : String(v).trim().slice(0, n) || null);
 const esMenor = (j) => edad(j.nacimiento) < 18;
-const pub = (j) => ({ id: j.id, clave: j.clave, nombre: j.nombre, nacimiento: j.nacimiento, menor: esMenor(j), habitacion: j.habitacion, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, emergencia_nombre: j.emergencia_nombre, emergencia_tel: j.emergencia_tel, alergias: j.alergias, notas_medicas: j.notas_medicas, activa: j.activa });
+const pub = (j) => ({ telefono: j.telefono, id: j.id, clave: j.clave, nombre: j.nombre, nacimiento: j.nacimiento, menor: esMenor(j), habitacion: j.habitacion, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, emergencia_nombre: j.emergencia_nombre, emergencia_tel: j.emergencia_tel, alergias: j.alergias, notas_medicas: j.notas_medicas, activa: j.activa });
 const efectivo = (p) => (['pendiente', 'esperando_padres', 'autorizado'].includes(p.estado) && p.regreso_at < Date.now() ? 'vencido' : p.estado);
 const conJug = 'SELECT p.*, j.nombre AS jugadora, j.clave, j.nacimiento, j.tutor_nombre, j.tutor_tel FROM permisos p JOIN jugadoras j ON j.id=p.jugadora_id';
 const fmt = (p) => ({ ...p, padre_token: undefined, padre_ip: undefined, padre_ua: undefined, estado: efectivo(p), menor: p.nacimiento ? edad(p.nacimiento) < 18 : undefined });
@@ -128,7 +128,56 @@ app.post('/api/jugadoras', auth('coordinacion'), async (req, res) => {
   if (await one('SELECT 1 FROM jugadoras WHERE clave=$1', [b.clave.trim().toLowerCase()]) || await one('SELECT 1 FROM staff WHERE usuario=$1', [b.clave.trim().toLowerCase()])) return fail(res, 409, 'Esa clave ya existe');
   await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,alergias,notas_medicas,pin_hash,qr) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
     [b.clave.trim().toLowerCase(), b.nacimiento, ...campos(b), hashPin(b.pin), crypto.randomBytes(12).toString('hex')]);
+  if (str(b.telefono, 20)) await q('UPDATE jugadoras SET telefono=$1 WHERE clave=$2', [str(b.telefono, 20), b.clave.trim().toLowerCase()]);
   await audit(req.u, 'jugadora_alta', b.nombre); res.json({ ok: true });
+});
+// Registro por lista: crea las cuentas con clave y PIN generados y los devuelve UNA vez para entregarlos a cada jugadora
+const quitaAcentos = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const fechaIso = (f = '') => { const s = String(f).trim(), m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/) || s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/); if (!m) return null; const [y, mo, d] = m[1].length === 4 ? [m[1], m[2], m[3]] : [m[3], m[2], m[1]]; const iso = `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`; return Number.isNaN(new Date(iso).getTime()) ? null : iso; };
+const crearJugadora = async (b, nombre, nac, pin) => {
+  const partes = quitaAcentos(nombre).toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(Boolean);
+  const base = (partes.length > 1 ? `${partes[0]}.${partes[partes.length > 2 ? partes.length - 2 : 1]}` : partes[0]) || 'jugadora';
+  let clave = base, n = 1; while (await one('SELECT 1 FROM jugadoras WHERE clave=$1', [clave]) || await one('SELECT 1 FROM staff WHERE usuario=$1', [clave])) clave = base + ++n;
+  await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,pin_hash,qr,telefono) VALUES($1,$2,$3,$4,$5,$6,$5,$6,$7,$8,$9)',
+    [clave, nac, nombre, str(b.habitacion, 20), str(b.tutor_nombre, 120), str(b.tutor_tel, 20), hashPin(pin), crypto.randomBytes(12).toString('hex'), str(b.telefono, 20)]);
+  return clave;
+};
+// Autorregistro: la coordinación comparte un enlace con un código; la jugadora crea su cuenta y elige su PIN.
+const codigoReg = async () => { let c = (await config()).codigo_registro; if (!c) { c = crypto.randomBytes(5).toString('base64url'); await setConfig('codigo_registro', c); } return c; };
+app.get('/api/registro/codigo', auth('coordinacion'), async (req, res) => res.json({ codigo: await codigoReg() }));
+app.post('/api/registro/codigo', auth('coordinacion'), async (req, res) => {
+  const c = crypto.randomBytes(5).toString('base64url'); await setConfig('codigo_registro', c); await audit(req.u, 'registro_codigo_nuevo'); res.json({ codigo: c });
+});
+app.post('/api/registro', async (req, res) => {
+  if (bloqueado(req.ip)) return fail(res, 429, 'Demasiados intentos. Espera 10 minutos.');
+  const b = req.body || {};
+  if (String(b.codigo || '') !== await codigoReg()) { strike(req.ip); return fail(res, 403, 'El enlace de registro no es válido o ya venció. Pídele uno nuevo a Coordinación.'); }
+  const nombre = str(b.nombre, 120), nac = fechaIso(b.nacimiento);
+  if (!nombre || !nac) return fail(res, 400, 'Escribe tu nombre completo y tu fecha de nacimiento');
+  if (!tel(b.telefono)) return fail(res, 400, 'Escribe tu teléfono');
+  if (edad(nac) < 18 && (!str(b.tutor_nombre) || !tel(b.tutor_tel))) return fail(res, 400, 'Escribe el nombre y teléfono de tu mamá, papá o tutor');
+  if (!/^\d{4,8}$/.test(String(b.pin || ''))) return fail(res, 400, 'Elige un PIN de 4 a 8 dígitos');
+  if (String(b.pin) === '1234') return fail(res, 400, 'Ese PIN es muy fácil de adivinar. Elige otro');
+  const dup = await one('SELECT 1 FROM jugadoras WHERE lower(nombre)=lower($1) AND nacimiento=$2', [nombre, nac]);
+  if (dup) return fail(res, 409, 'Ya existe una cuenta con ese nombre y fecha. Entra con tu usuario o pídele ayuda a Coordinación.');
+  const clave = await crearJugadora(b, nombre, nac, String(b.pin));
+  const j = await one('SELECT id FROM jugadoras WHERE clave=$1', [clave]);
+  await audit({ rol: 'jugadora', id: j.id }, 'autorregistro', nombre);
+  notify(['coordinacion'], { title: 'Nueva jugadora registrada', body: nombre, tag: 'reg-' + j.id });
+  res.json({ token: sign({ rol: 'jugadora', id: j.id, exp: Date.now() + 30 * 864e5 }), rol: 'jugadora', nombre, clave });
+});
+app.post('/api/jugadoras/lote', auth('coordinacion'), async (req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows.slice(0, 80) : []; if (!rows.length) return fail(res, 400, 'No hay jugadoras en la lista');
+  const creadas = [], omitidas = [];
+  for (const [i, b] of rows.entries()) {
+    const nombre = str(b.nombre, 120), nac = fechaIso(b.nacimiento);
+    if (!nombre || !nac) { omitidas.push({ fila: i + 1, nombre, error: 'Falta nombre o fecha de nacimiento válida' }); continue; }
+    if (edad(nac) < 18 && !tel(b.tutor_tel)) { omitidas.push({ fila: i + 1, nombre, error: 'Menor sin teléfono del tutor' }); continue; }
+    const pin = String(crypto.randomInt(1000, 10000));
+    const clave = await crearJugadora(b, nombre, nac, pin);
+    creadas.push({ nombre, clave, pin, telefono: str(b.telefono, 20) });
+  }
+  await audit(req.u, 'jugadoras_lote', `${creadas.length} creadas, ${omitidas.length} omitidas`); res.json({ creadas, omitidas });
 });
 app.patch('/api/jugadoras/:id', auth('coordinacion'), async (req, res) => {
   const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.params.id]); if (!j) return fail(res, 404, 'No existe');
@@ -136,6 +185,7 @@ app.patch('/api/jugadoras/:id', auth('coordinacion'), async (req, res) => {
   if (req.body.pin && !/^\d{4,8}$/.test(req.body.pin)) return fail(res, 400, 'PIN inválido');
   await q('UPDATE jugadoras SET nombre=$1,habitacion=$2,tutor_nombre=$3,tutor_tel=$4,emergencia_nombre=$5,emergencia_tel=$6,alergias=$7,notas_medicas=$8,activa=$9,pin_hash=$10 WHERE id=$11',
     [...campos(b), typeof b.activa === 'boolean' ? b.activa : !!+b.activa, req.body.pin ? hashPin(req.body.pin) : j.pin_hash, j.id]);
+  if (req.body.telefono !== undefined) await q('UPDATE jugadoras SET telefono=$1 WHERE id=$2', [str(req.body.telefono, 20), j.id]);
   await audit(req.u, 'jugadora_edit', `${j.nombre} ${Object.keys(req.body).join(',')}`); res.json({ ok: true });
 });
 

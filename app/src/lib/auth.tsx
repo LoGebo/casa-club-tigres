@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { api, setOnExpire, setToken, store, type Session } from '@/lib/api';
 
-type Ctx = { session: Session | null; ready: boolean; login: (usuario: string, pin: string) => Promise<void>; logout: () => Promise<void> };
+type Ctx = { session: Session | null; ready: boolean; login: (usuario: string, pin: string) => Promise<void>; registrar: (datos: Record<string, string>) => Promise<string>; logout: () => Promise<void> };
 const AuthCtx = createContext<Ctx>(null as never);
 export const useAuth = () => useContext(AuthCtx);
 
@@ -22,6 +22,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(s.token); setSession(s); await store.set(s);
   }, []);
 
-  const value = useMemo(() => ({ session, ready, login, logout }), [session, ready, login, logout]);
+  const registrar = useCallback(async (datos: Record<string, string>) => {
+    const { clave, ...s } = await api<Session & { clave: string }>('/registro', 'POST', datos);
+    setToken(s.token); setSession(s); await store.set(s);
+    return clave;
+  }, []);
+
+  const value = useMemo(() => ({ session, ready, login, registrar, logout }), [session, ready, login, registrar, logout]);
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

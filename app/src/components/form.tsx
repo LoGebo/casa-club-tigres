@@ -76,3 +76,18 @@ export function Choice<K extends string>({ label, options, value, onChange }: { 
     </View>
   );
 }
+
+/** Solo fecha (p. ej. nacimiento). value 'AAAA-MM-DD' o ''. */
+export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (iso: string) => void }) {
+  const t = useTheme();
+  const d = value ? new Date(value + 'T12:00') : new Date(2008, 0, 1);
+  const body = Platform.OS === 'web'
+    ? createElement('input', { type: 'date', value, max: new Date().toISOString().slice(0, 10), onChange: (e: { target: { value: string } }) => onChange(e.target.value), style: { font: 'inherit', fontSize: 17, border: 0, background: 'transparent', color: t.label, padding: 0, colorScheme: t.bg === '#000000' ? 'dark' : 'light' } })
+    : <DateTimePicker value={d} mode="date" display="compact" locale="es-MX" maximumDate={new Date()} onChange={(_, x) => x && onChange(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`)} />;
+  return (
+    <View style={{ paddingHorizontal: Space.l, paddingVertical: 10, backgroundColor: t.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56 }}>
+      <T v="body">{label}</T>
+      {body}
+    </View>
+  );
+}

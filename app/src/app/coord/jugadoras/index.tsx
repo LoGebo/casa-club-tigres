@@ -23,7 +23,8 @@ export default function Jugadoras() {
   const lista = js.filter((j) => !v || (j.nombre + ' ' + (j.habitacion || '')).toLowerCase().includes(v));
   return (
     <Screen refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}>
-      <Button title="Agregar jugadora" icon={<Icon sf="plus" ion="add" size={20} color="#fff" />} onPress={() => router.push('/jugadora-form')} />
+      <Button title="Registrar jugadoras" icon={<Icon sf="person.badge.plus" ion="person-add" size={20} color="#fff" />} onPress={() => router.push('/jugadora-registro')} />
+      <Button title="Alta detallada (habitación, alergias…)" kind="tinted" small onPress={() => router.push('/jugadora-form')} />
       <TextInput value={q} onChangeText={setQ} placeholder="Buscar por nombre o habitación" placeholderTextColor={t.label3} autoCorrect={false} clearButtonMode="while-editing" accessibilityLabel="Buscar jugadora"
         style={{ color: t.label, fontSize: 17, backgroundColor: t.fill, borderRadius: Radius.s, paddingHorizontal: Space.m, minHeight: 44 }} />
       {lista.length ? (
