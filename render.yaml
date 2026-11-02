@@ -15,11 +15,5 @@ services:
         sync: false
       - key: SECRET              # firma de sesiones; no cambiarla después (cierra todas las sesiones)
         generateValue: true
-      - key: PUBLIC_URL          # https://casa-club-tigres.onrender.com (para los enlaces de WhatsApp)
-        sync: false
-      - key: COORD_PIN           # PIN temporal de Coordinación (4–8 dígitos); se pide cambiarlo al primer ingreso
-        sync: false
-      - key: SEG_PIN             # PIN temporal de Seguridad
-        sync: false
       - key: TZ_CLUB
         value: America/Monterrey

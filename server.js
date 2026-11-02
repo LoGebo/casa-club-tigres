@@ -302,7 +302,7 @@ app.post('/api/permisos/:id/enviar-padres', auth('coordinacion'), decide(async (
   if (!esMenor(p)) return fail(res, 400, 'Es mayor de edad: autoriza directamente');
   const tok = p.padre_token || crypto.randomBytes(18).toString('base64url'), otp = p.padre_otp || String(crypto.randomInt(1000, 10000));
   await q("UPDATE permisos SET estado='esperando_padres', padre_token=$1, padre_otp=$2, padre_enviado_at=$3 WHERE id=$4", [tok, otp, Date.now(), p.id]);
-  const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const base = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`;
   const msg = `Hola ${p.tutor_nombre || ''}, ${p.jugadora} solicita permiso para salir de Casa Club Femenil Tigres.\n\nDestino: ${p.destino}\nAcompañante: ${p.acompanante}\nSalida: ${hora(p.salida_at)}\nRegreso: ${hora(p.regreso_at)}\n\nPara autorizar o rechazar entra aquí:\n${base}/p/${tok}`;
   await audit(req.u, 'permiso_enviado_tutor', p.id); res.json({ whatsapp: wa(p, msg), whatsapp_codigo: wa(p, codigoMsg(otp)) });
 }));
@@ -566,7 +566,7 @@ async function syncPermisoViaje(v, jid, estado) {
 }
 app.get('/api/viajes/:id/tutores', auth('coordinacion'), async (req, res) => {
   const v = await one('SELECT * FROM viajes WHERE id=$1', [req.params.id]); if (!v) return fail(res, 404, 'No existe');
-  const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const base = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `${req.protocol}://${req.get('host')}`;
   const rows = await q("SELECT p.id, p.estado, p.padre_token, p.padre_otp, p.padre_decision, j.id jid, j.nombre, j.tutor_nombre, j.tutor_tel FROM permisos p JOIN jugadoras j ON j.id=p.jugadora_id WHERE p.viaje_id=$1 AND p.padre_token IS NOT NULL AND p.estado<>'cancelado' ORDER BY j.nombre", [v.id]);
   res.json(rows.map((r) => ({ permiso_id: r.id, jugadora_id: r.jid, nombre: r.nombre, tutor_nombre: r.tutor_nombre, estado: r.estado, decision: r.padre_decision,
     whatsapp: wa(r, `Hola ${r.tutor_nombre || ''}, ${r.nombre} fue convocada al viaje «${v.titulo}» (${v.destino}).\nSalida: ${hora(v.salida_at)}\nRegreso: ${hora(v.regreso_at)}\n\nPara autorizar su viaje (una sola vez) entra aquí:\n${base}/p/${r.padre_token}`), whatsapp_codigo: wa(r, codigoMsg(r.padre_otp)) })));
@@ -683,8 +683,13 @@ app.use((e, req, res, next) => { console.error(e); fail(res, 500, 'Error del ser
 // Primera vez en un servidor nuevo: crea Coordinación y Seguridad con los PIN temporales de las variables de entorno (deben cambiarlos al entrar).
 async function cuentasIniciales() {
   if ((await one('SELECT COUNT(*)::int n FROM staff')).n) return;
-  for (const [u, n, rol, p] of [['coordinacion', 'Coordinación', 'coordinacion', process.env.COORD_PIN], ['seguridad', 'Seguridad', 'seguridad', process.env.SEG_PIN]])
-    if (/^\d{4,8}$/.test(p || '')) { await q('INSERT INTO staff(usuario,nombre,rol,pin_hash,debe_cambiar_pin) VALUES($1,$2,$3,$4,TRUE)', [u, n, rol, hashPin(p)]); console.log('Cuenta creada:', u); }
+  for (let [u, n, rol, p] of [['coordinacion', 'Coordinación', 'coordinacion', process.env.COORD_PIN], ['seguridad', 'Seguridad', 'seguridad', process.env.SEG_PIN]])
+  {
+    const gen = !/^\d{4,8}$/.test(p || '');
+    if (gen) p = String(crypto.randomInt(100000, 999999)); // sin variable: PIN temporal aleatorio, solo se muestra en los logs del servidor
+    await q('INSERT INTO staff(usuario,nombre,rol,pin_hash,debe_cambiar_pin) VALUES($1,$2,$3,$4,TRUE)', [u, n, rol, hashPin(p)]);
+    console.log('Cuenta creada:', u, gen ? `PIN temporal: ${p}` : '');
+  }
 }
 await cuentasIniciales();
 await initPush();
