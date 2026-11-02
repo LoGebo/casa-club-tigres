@@ -1,6 +1,6 @@
 // Utilidades compartidas de las pantallas de la jugadora.
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { run } from '@/components/notify';
 import { Badge } from '@/components/ui';
@@ -10,7 +10,7 @@ const ESTADO: Record<string, [string, 'warn' | 'ok' | 'bad' | 'gold' | 'neutral'
   pendiente: ['Pendiente', 'warn'], esperando_padres: ['Esperando tutor', 'warn'], autorizado: ['Autorizado', 'ok'], rechazado: ['Rechazado', 'bad'],
   salio: ['Afuera', 'gold'], regreso: ['Regresó', 'neutral'], vencido: ['Vencido', 'bad'],
   autorizada: ['Autorizada', 'ok'], rechazada: ['Rechazada', 'bad'], dentro: ['Dentro', 'gold'],
-  abierto: ['Abierto', 'warn'], en_proceso: ['En proceso', 'gold'], resuelto: ['Resuelto', 'ok'],
+  cancelado: ['Cancelado', 'neutral'], abierto: ['Abierto', 'warn'], en_proceso: ['En proceso', 'gold'], resuelto: ['Resuelto', 'ok'],
 };
 export const EstadoBadge = ({ e, visita }: { e: string; visita?: boolean }) => {
   const [text, tone] = ESTADO[visita && e === 'salio' ? 'salio_v' : e] ?? (e === 'salio_v' || (visita && e === 'salio') ? ['Salió', 'neutral'] : [e, 'neutral']);
@@ -31,3 +31,19 @@ export function useList<T>(path: string) {
 }
 
 export const CATEGORIAS = [['mantenimiento', 'Mantenimiento'], ['lavanderia', 'Lavandería'], ['medico', 'Médico'], ['alimentos', 'Alimentos'], ['otro', 'Otro']] as const;
+
+/** Hora actual que se refresca sola (para cuentas regresivas). */
+export function useAhora(cada = 30_000) {
+  const [n, setN] = useState(Date.now);
+  useEffect(() => { const i = setInterval(() => setN(Date.now()), cada); return () => clearInterval(i); }, [cada]);
+  return n;
+}
+
+/** "42 min" o "1 h 05 min" */
+export const duracion = (ms: number) => {
+  const m = Math.max(1, Math.round(ms / 60e3));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')} min` : ''}`;
+};
+
+export const TIPOS_COMIDA = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['cena', 'Cena'], ['colacion', 'Colación']] as const;
+export type TipoComida = (typeof TIPOS_COMIDA)[number][0];

@@ -9,6 +9,7 @@ let run;
 if (process.env.DATABASE_URL) {
   const { default: pg } = await import('pg');
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false } });
+  pool.on('error', (e) => console.error('pg', e.message)); // Neon cierra conexiones ociosas: no tumbar el proceso
   run = (sql, p) => pool.query(sql, p);
 } else {
   const { PGlite } = await import('@electric-sql/pglite');

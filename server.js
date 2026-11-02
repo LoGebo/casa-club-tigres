@@ -159,7 +159,10 @@ export async function vigilar() {
 }
 
 // ---------- login / sesión ----------
-app.get('/api/health', (req, res) => res.json({ ok: true })); // para el ping que evita que el hosting gratuito duerma
+let ultimaVigilada = 0;
+// Un monitor externo gratuito (cron-job.org / UptimeRobot) llama a /api/health cada pocos minutos: mantiene despierto el hosting
+// gratuito y, además, ejecuta el vigilante de retrasos aunque el proceso acabe de despertar.
+app.get('/api/health', (req, res) => { res.json({ ok: true }); if (Date.now() - ultimaVigilada > 50e3) { ultimaVigilada = Date.now(); vigilar().catch(console.error); } });
 app.post('/api/login', async (req, res) => {
   if (bloqueado(req.ip)) return fail(res, 429, 'Demasiados intentos. Espera 10 minutos.');
   const uq = String(req.body.usuario || '').trim().toLowerCase(), pin = String(req.body.pin || '');
@@ -659,9 +662,21 @@ app.patch('/api/staff/:id', auth('coordinacion'), async (req, res) => {
 app.get('/api/audit', auth('coordinacion'), async (req, res) => res.json(await q('SELECT a.*, s.nombre actor FROM audit a LEFT JOIN staff s ON s.id=a.actor_id AND a.rol IN(\'seguridad\',\'coordinacion\') ORDER BY a.at DESC LIMIT 150')));
 
 mount({ app, auth, STAFF, fail, str, notify, audit, sign, verify, fotoUrl, fechaLocal, diaMs, hora, esMenor, strike, bloqueado });
-app.use(express.static(path.join(__dir, 'public'), { extensions: ['html'] }));
+const WEB = path.join(__dir, 'public');
+app.use(express.static(WEB, { setHeaders: (res, f) => { res.set('Cache-Control', /[/\\]_expo[/\\]|[/\\]assets[/\\]/.test(f) ? 'public, max-age=31536000, immutable' : 'no-cache'); } }));
+app.use((req, res, next) => { // rutas de la app (/login, /registro, /p/TOKEN…) → la misma página; la API nunca cae aquí
+  if (req.method !== 'GET' || req.path.startsWith('/api/') || path.extname(req.path)) return next();
+  res.set('Cache-Control', 'no-cache').sendFile(path.join(WEB, 'index.html'), (e) => e && next());
+});
 app.use((e, req, res, next) => { console.error(e); fail(res, 500, 'Error del servidor'); });
 
+// Primera vez en un servidor nuevo: crea Coordinación y Seguridad con los PIN temporales de las variables de entorno (deben cambiarlos al entrar).
+async function cuentasIniciales() {
+  if ((await one('SELECT COUNT(*)::int n FROM staff')).n) return;
+  for (const [u, n, rol, p] of [['coordinacion', 'Coordinación', 'coordinacion', process.env.COORD_PIN], ['seguridad', 'Seguridad', 'seguridad', process.env.SEG_PIN]])
+    if (/^\d{4,8}$/.test(p || '')) { await q('INSERT INTO staff(usuario,nombre,rol,pin_hash,debe_cambiar_pin) VALUES($1,$2,$3,$4,TRUE)', [u, n, rol, hashPin(p)]); console.log('Cuenta creada:', u); }
+}
+await cuentasIniciales();
 await initPush();
 export default app;
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

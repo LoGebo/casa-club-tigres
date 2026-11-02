@@ -1,15 +1,37 @@
 // Piezas compartidas de coordinación: fechas, confirmación, aviso con texto, selector de jugadora.
 import { useState } from 'react';
-import { Alert, Modal, Platform, TextInput, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 
-import { Avatar, Button, Group, Icon, Row, T } from '@/components/ui';
+import { Avatar, Button, Group, Icon, Row, T, tap } from '@/components/ui';
 import { Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type Jugadora = {
   id: number; clave: string; nombre: string; nacimiento: string; menor: boolean; habitacion?: string; tutor_nombre?: string; tutor_tel?: string;
   emergencia_nombre?: string; emergencia_tel?: string; alergias?: string; notas_medicas?: string; activa: boolean; qr: string; categoria?: string | null; nivel?: string | null; telefono?: string | null;
+  disponibilidad?: string | null; disp_nota?: string | null; sangre?: string | null; seguro?: string | null;
 };
+
+export type Disp = 'disponible' | 'recuperacion' | 'descanso';
+export const DISP: Record<Disp, string> = { disponible: 'Disponible', recuperacion: 'En recuperación', descanso: 'Descanso' };
+/** null/'' = disponible */
+export const dispDe = (j: { disponibilidad?: string | null }): Disp => (j.disponibilidad === 'recuperacion' || j.disponibilidad === 'descanso' ? j.disponibilidad : 'disponible');
+export const noDisp = (j: { disponibilidad?: string | null }) => dispDe(j) !== 'disponible';
+
+/** Chips horizontales de selección (categorías, sugerencias). */
+export function Chips({ opts, value, onChange }: { opts: readonly (readonly [string, string])[]; value: string; onChange: (k: string) => void }) {
+  const t = useTheme();
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: Space.s }} keyboardShouldPersistTaps="handled">
+      {opts.map(([k, l]) => (
+        <Pressable key={k} onPress={() => { tap(); onChange(k); }} accessibilityRole="button" accessibilityLabel={l} accessibilityState={{ selected: value === k }}
+          style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 22, justifyContent: 'center', backgroundColor: value === k ? t.tint : t.fill }}>
+          <T v="sub" color={value === k ? (t.bg === '#000000' ? '#071647' : '#fff') : t.label} style={{ fontWeight: '600' }}>{l}</T>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
 
 export const dt = (ms: number) => new Date(ms).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 export const hm = (ms: number) => new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });

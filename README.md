@@ -1,18 +1,30 @@
-# Casa Club Acceso
-PWA de control de entradas/salidas (jugadoras · Seguridad · Coordinación · tutores por enlace).
+# Casa Club Tigres — control de acceso
 
+App para la Casa Club Femenil: permisos de salida y regreso con QR, autorización de mamá/papá por WhatsApp (enlace + código),
+viajes y convocatorias, comedor, avisos y horarios por categoría. Roles: **jugadora · Seguridad · Coordinación** (y tutores por enlace).
+
+- **Frontend** (`app/`): Expo (React Native) + Expo Router. Una sola base de código para iPhone, Android y web. La web se exporta a `public/` y la sirve el mismo servidor.
+- **Backend** (`server.js`, `features.js`, `db.js`): Node 22 + Express 5 + Postgres (Neon en producción, PGlite embebido en local).
+
+## Desarrollo local
     npm install
-    node seed.js            # crea usuarios seguridad/coordinacion (imprime PINs; o SEG_PIN= COORD_PIN=)
-    node seed.js demo       # opcional: jugadoras de prueba (ana/bea/caro, PIN 1234)
-    npm start               # http://localhost:3000
-    npm test                # flujo completo
+    SEG_PIN=1234 COORD_PIN=1234 node seed.js && node seed.js demo   # usuarios y datos de ejemplo (solo local)
+    PORT=3000 node server.js                                        # API
+    cd app && npm install && EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo start --web
+    npm test                                                        # pruebas de la API (flujo completo)
 
-Variables: PORT, DATA_DIR (carpeta de la BD, montar volumen persistente), PUBLIC_URL (https://tu-dominio, para los enlaces de WhatsApp), TZ_CLUB.
-Despliegue: cualquier host Node ≥22.13 con HTTPS (la cámara lo exige): Railway/Render/Fly. Los usuarios abren el link y "Agregar a pantalla de inicio".
+## Publicar la versión web (gratis)
+1. `scripts/build-web.sh` exporta la app a `public/` (se versiona, así el hosting no necesita compilar nada).
+2. **Neon** (neon.tech, plan gratis): crea un proyecto y copia la cadena de conexión (`postgresql://…?sslmode=require`).
+3. **Render** (render.com, plan gratis): New → Blueprint → este repo (`render.yaml`). Variables: `DATABASE_URL`, `PUBLIC_URL` (la URL que te asigne Render), `COORD_PIN` y `SEG_PIN` (temporales; se pide cambiarlos al primer ingreso).
+4. **Monitor gratis** (cron-job.org o UptimeRobot): llama a `https://TU-APP.onrender.com/api/health` cada 5 minutos. Mantiene despierto el servicio y ejecuta el vigilante de retrasos / toque de queda.
+5. Coordinación entra, abre Jugadoras → Registrar jugadoras → Enlace, y manda el enlace por WhatsApp.
 
-## Base de datos y hosting gratis
-- Local: Postgres embebido (PGlite) en `data/pg`, sin instalar nada.
-- Producción: define `DATABASE_URL` (Neon o Supabase, plan gratis) y `SECRET` (cadena larga aleatoria). El mismo código usa Postgres real.
-- App Node: Render/Koyeb gratis (se duerme sin tráfico). Un monitor gratis (UptimeRobot) que haga ping a `/api/health` cada 5 min la mantiene despierta; ese endpoint no toca la base, así que Neon puede dormir.
-- Logo oficial: coloca `public/brand/logo.png` y el encabezado lo usa solo.
-- Verifica los límites vigentes de cada plan antes de contratar: cambian seguido.
+Límites del plan gratis (verifícalos antes de contratar, cambian): Render duerme tras 15 min sin tráfico (el monitor lo evita); Neon 0.5 GB (las fotos de comidas se borran a los 30 días y las de servicios a los 90).
+
+## Notificaciones
+- Dentro de la app siempre hay bandeja (campana). Push en web: instalar la app en la pantalla de inicio (iPhone: Compartir → Agregar a pantalla de inicio) y activar avisos en Notificaciones.
+- Push nativo (App Store / Google Play) requiere cuenta de desarrollador (Apple $99/año, Google $25 único) y compilar con EAS; el código ya registra el token de Expo.
+
+## Variables de entorno
+`DATABASE_URL`, `SECRET`, `PUBLIC_URL`, `COORD_PIN`/`SEG_PIN` (solo primera vez), `TZ_CLUB` (zona horaria), `PORT`, `DATA_DIR` (local).
