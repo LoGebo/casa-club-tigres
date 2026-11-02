@@ -686,6 +686,7 @@ async function cuentasIniciales() {
   for (let [u, n, rol, p] of [['coordinacion', 'Coordinación', 'coordinacion', process.env.COORD_PIN], ['seguridad', 'Seguridad', 'seguridad', process.env.SEG_PIN]])
   {
     const gen = !/^\d{4,8}$/.test(p || '');
+    if (gen && !process.env.RENDER) continue; // fuera de Render no se inventan cuentas
     if (gen) p = String(crypto.randomInt(100000, 999999)); // sin variable: PIN temporal aleatorio, solo se muestra en los logs del servidor
     await q('INSERT INTO staff(usuario,nombre,rol,pin_hash,debe_cambiar_pin) VALUES($1,$2,$3,$4,TRUE)', [u, n, rol, hashPin(p)]);
     console.log('Cuenta creada:', u, gen ? `PIN temporal: ${p}` : '');
