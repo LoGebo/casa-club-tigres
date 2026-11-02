@@ -4,21 +4,23 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 
-import { DateField, TextField } from '@/components/form';
+import { Choice, DateField, TextField } from '@/components/form';
 import { Button, Group, T } from '@/components/ui';
 import { brand, MaxWidth, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
+import { useCategorias } from '@/lib/categorias';
 
 export default function Registro() {
   const t = useTheme();
   const { codigo } = useLocalSearchParams<{ codigo?: string }>();
   const { registrar } = useAuth();
-  const [f, setF] = useState({ nombre: '', nacimiento: '', telefono: '', tutor_nombre: '', tutor_tel: '', pin: '', pin2: '' });
+  const [f, setF] = useState({ nombre: '', nacimiento: '', telefono: '', tutor_nombre: '', tutor_tel: '', categoria: '', pin: '', pin2: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const cats = useCategorias();
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
-  const completo = Object.values(f).every((v) => v.trim());
+  const completo = Object.entries(f).every(([k, v]) => v.trim() || (k === 'categoria' && !cats.length));
 
   const enviar = async () => {
     if (f.pin !== f.pin2) return setErr('Los dos PIN no coinciden');
@@ -43,7 +45,8 @@ export default function Registro() {
             <DateField label="Fecha de nacimiento" value={f.nacimiento} onChange={set('nacimiento')} />
             <TextField label="Tu teléfono móvil" value={f.telefono} onChangeText={set('telefono')} keyboardType="phone-pad" />
           </Group>
-          <Group header="Mamá, papá o tutor" footer="Es quien autoriza tus salidas por WhatsApp.">
+          {cats.length ? <Group header="Tu categoría" footer="Si cambias de categoría, Coordinación lo actualiza."><Choice options={cats.map((c) => [c, c] as const)} value={f.categoria} onChange={set('categoria')} /></Group> : null}
+          <Group header="Mamá, papá o tutor" footer="Si eres menor de edad, es quien autoriza tus salidas por WhatsApp.">
             <TextField label="Nombre de quien da los permisos" value={f.tutor_nombre} onChangeText={set('tutor_nombre')} autoCapitalize="words" />
             <TextField label="Teléfono móvil del tutor" value={f.tutor_tel} onChangeText={set('tutor_tel')} keyboardType="phone-pad" />
           </Group>

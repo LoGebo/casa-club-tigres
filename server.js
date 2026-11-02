@@ -48,7 +48,10 @@ const hora = (ms) => new Date(ms).toLocaleString('es-MX', { timeZone: TZ, weekda
 const wa = (j, msg) => (j.tutor_tel ? `https://wa.me/${tel(j.tutor_tel)}?text=${encodeURIComponent(msg)}` : null);
 const str = (v, n = 300) => (v == null ? null : String(v).trim().slice(0, n) || null);
 const esMenor = (j) => edad(j.nacimiento) < 18;
-const pub = (j) => ({ telefono: j.telefono, id: j.id, clave: j.clave, nombre: j.nombre, nacimiento: j.nacimiento, menor: esMenor(j), habitacion: j.habitacion, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, emergencia_nombre: j.emergencia_nombre, emergencia_tel: j.emergencia_tel, alergias: j.alergias, notas_medicas: j.notas_medicas, activa: j.activa });
+// Fuerzas básicas = categorías «Sub-XX»; cualquier otra (Primer equipo, etc.) es profesional
+const nivel = (c) => (!c ? null : /^sub/i.test(c) ? 'fuerzas_basicas' : 'profesional');
+const catOk = async (c) => { const v = str(c, 40); if (!v) return ''; const l = (await config()).categorias.split(',').map((x) => x.trim()); return l.includes(v) ? v : null; };
+const pub = (j) => ({ telefono: j.telefono, categoria: j.categoria, nivel: nivel(j.categoria), id: j.id, clave: j.clave, nombre: j.nombre, nacimiento: j.nacimiento, menor: esMenor(j), habitacion: j.habitacion, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, emergencia_nombre: j.emergencia_nombre, emergencia_tel: j.emergencia_tel, alergias: j.alergias, notas_medicas: j.notas_medicas, activa: j.activa });
 const efectivo = (p) => (['pendiente', 'esperando_padres', 'autorizado'].includes(p.estado) && p.regreso_at < Date.now() ? 'vencido' : p.estado);
 const conJug = 'SELECT p.*, j.nombre AS jugadora, j.clave, j.nacimiento, j.tutor_nombre, j.tutor_tel FROM permisos p JOIN jugadoras j ON j.id=p.jugadora_id';
 const fmt = (p) => ({ ...p, padre_token: undefined, padre_ip: undefined, padre_ua: undefined, estado: efectivo(p), menor: p.nacimiento ? edad(p.nacimiento) < 18 : undefined });
@@ -109,7 +112,7 @@ app.patch('/api/pin', auth(), async (req, res) => {
 app.get('/api/me', auth('jugadora'), async (req, res) => { const j = await one('SELECT * FROM jugadoras WHERE id=$1', [req.u.id]); res.json({ ...pub(j), qr: 'CCF:' + j.qr, ...(await mia(j.id)) }); });
 const mia = async (id) => ({ fuera: await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [id]) });
 app.get('/api/qr', async (req, res) => res.type('image/svg+xml').send(await QRCode.toString(String(req.query.d || '').slice(0, 200), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' })));
-app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club }); res.json({ toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
+app.get('/api/config', async (req, res) => { const c = await config(); if (!verify((req.get('authorization') || '').replace('Bearer ', ''))) return res.json({ nombre_club: c.nombre_club, categorias: c.categorias }); res.json({ categorias: c.categorias, toque_queda: c.toque_queda, tel_coordinacion: c.tel_coordinacion, nombre_club: c.nombre_club, gracia_min: c.gracia_min, tolerancia_min: c.tolerancia_min, max_pendientes: c.max_pendientes }); });
 app.put('/api/config', auth('coordinacion'), async (req, res) => {
   for (const k of Object.keys(DEFAULTS)) if (req.body[k] != null) await setConfig(k, String(req.body[k]).slice(0, 80));
   await audit(req.u, 'config', JSON.stringify(req.body)); res.json({ ok: true });
@@ -118,7 +121,7 @@ app.put('/api/config', auth('coordinacion'), async (req, res) => {
 // ---------- jugadoras ----------
 app.get('/api/jugadoras', auth(...STAFF), async (req, res) => {
   const rows = await q('SELECT * FROM jugadoras ORDER BY nombre');
-  res.json(rows.map((j) => (req.u.rol === 'coordinacion' ? { ...pub(j), qr: 'CCF:' + j.qr } : { id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, activa: j.activa })));
+  res.json(rows.map((j) => (req.u.rol === 'coordinacion' ? { ...pub(j), qr: 'CCF:' + j.qr } : { id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, activa: j.activa, categoria: j.categoria, nivel: nivel(j.categoria) })));
 });
 const campos = (b) => [str(b.nombre, 120), str(b.habitacion, 20), str(b.tutor_nombre, 120), str(b.tutor_tel, 20), str(b.emergencia_nombre, 120), str(b.emergencia_tel, 20), str(b.alergias, 300), str(b.notas_medicas, 500)];
 app.post('/api/jugadoras', auth('coordinacion'), async (req, res) => {
@@ -129,6 +132,7 @@ app.post('/api/jugadoras', auth('coordinacion'), async (req, res) => {
   await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,alergias,notas_medicas,pin_hash,qr) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
     [b.clave.trim().toLowerCase(), b.nacimiento, ...campos(b), hashPin(b.pin), crypto.randomBytes(12).toString('hex')]);
   if (str(b.telefono, 20)) await q('UPDATE jugadoras SET telefono=$1 WHERE clave=$2', [str(b.telefono, 20), b.clave.trim().toLowerCase()]);
+  if (b.categoria) await q('UPDATE jugadoras SET categoria=$1 WHERE clave=$2', [await catOk(b.categoria) || null, b.clave.trim().toLowerCase()]);
   await audit(req.u, 'jugadora_alta', b.nombre); res.json({ ok: true });
 });
 // Registro por lista: crea las cuentas con clave y PIN generados y los devuelve UNA vez para entregarlos a cada jugadora
@@ -138,8 +142,8 @@ const crearJugadora = async (b, nombre, nac, pin) => {
   const partes = quitaAcentos(nombre).toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(Boolean);
   const base = (partes.length > 1 ? `${partes[0]}.${partes[partes.length > 2 ? partes.length - 2 : 1]}` : partes[0]) || 'jugadora';
   let clave = base, n = 1; while (await one('SELECT 1 FROM jugadoras WHERE clave=$1', [clave]) || await one('SELECT 1 FROM staff WHERE usuario=$1', [clave])) clave = base + ++n;
-  await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,pin_hash,qr,telefono) VALUES($1,$2,$3,$4,$5,$6,$5,$6,$7,$8,$9)',
-    [clave, nac, nombre, str(b.habitacion, 20), str(b.tutor_nombre, 120), str(b.tutor_tel, 20), hashPin(pin), crypto.randomBytes(12).toString('hex'), str(b.telefono, 20)]);
+  await q('INSERT INTO jugadoras(clave,nacimiento,nombre,habitacion,tutor_nombre,tutor_tel,emergencia_nombre,emergencia_tel,pin_hash,qr,telefono,categoria) VALUES($1,$2,$3,$4,$5,$6,$5,$6,$7,$8,$9,$10)',
+    [clave, nac, nombre, str(b.habitacion, 20), str(b.tutor_nombre, 120), str(b.tutor_tel, 20), hashPin(pin), crypto.randomBytes(12).toString('hex'), str(b.telefono, 20), b.categoria || null]);
   return clave;
 };
 // Autorregistro: la coordinación comparte un enlace con un código; la jugadora crea su cuenta y elige su PIN.
@@ -157,10 +161,11 @@ app.post('/api/registro', async (req, res) => {
   if (!tel(b.telefono)) return fail(res, 400, 'Escribe tu teléfono');
   if (edad(nac) < 18 && (!str(b.tutor_nombre) || !tel(b.tutor_tel))) return fail(res, 400, 'Escribe el nombre y teléfono de tu mamá, papá o tutor');
   if (!/^\d{4,8}$/.test(String(b.pin || ''))) return fail(res, 400, 'Elige un PIN de 4 a 8 dígitos');
+  const cat = await catOk(b.categoria); if (!cat) return fail(res, 400, 'Elige tu categoría');
   if (String(b.pin) === '1234') return fail(res, 400, 'Ese PIN es muy fácil de adivinar. Elige otro');
   const dup = await one('SELECT 1 FROM jugadoras WHERE lower(nombre)=lower($1) AND nacimiento=$2', [nombre, nac]);
   if (dup) return fail(res, 409, 'Ya existe una cuenta con ese nombre y fecha. Entra con tu usuario o pídele ayuda a Coordinación.');
-  const clave = await crearJugadora(b, nombre, nac, String(b.pin));
+  const clave = await crearJugadora({ ...b, categoria: cat }, nombre, nac, String(b.pin));
   const j = await one('SELECT id FROM jugadoras WHERE clave=$1', [clave]);
   await audit({ rol: 'jugadora', id: j.id }, 'autorregistro', nombre);
   notify(['coordinacion'], { title: 'Nueva jugadora registrada', body: nombre, tag: 'reg-' + j.id });
@@ -174,7 +179,7 @@ app.post('/api/jugadoras/lote', auth('coordinacion'), async (req, res) => {
     if (!nombre || !nac) { omitidas.push({ fila: i + 1, nombre, error: 'Falta nombre o fecha de nacimiento válida' }); continue; }
     if (edad(nac) < 18 && !tel(b.tutor_tel)) { omitidas.push({ fila: i + 1, nombre, error: 'Menor sin teléfono del tutor' }); continue; }
     const pin = String(crypto.randomInt(1000, 10000));
-    const clave = await crearJugadora(b, nombre, nac, pin);
+    const clave = await crearJugadora({ ...b, categoria: await catOk(b.categoria) || null }, nombre, nac, pin);
     creadas.push({ nombre, clave, pin, telefono: str(b.telefono, 20) });
   }
   await audit(req.u, 'jugadoras_lote', `${creadas.length} creadas, ${omitidas.length} omitidas`); res.json({ creadas, omitidas });
@@ -185,6 +190,7 @@ app.patch('/api/jugadoras/:id', auth('coordinacion'), async (req, res) => {
   if (req.body.pin && !/^\d{4,8}$/.test(req.body.pin)) return fail(res, 400, 'PIN inválido');
   await q('UPDATE jugadoras SET nombre=$1,habitacion=$2,tutor_nombre=$3,tutor_tel=$4,emergencia_nombre=$5,emergencia_tel=$6,alergias=$7,notas_medicas=$8,activa=$9,pin_hash=$10 WHERE id=$11',
     [...campos(b), typeof b.activa === 'boolean' ? b.activa : !!+b.activa, req.body.pin ? hashPin(req.body.pin) : j.pin_hash, j.id]);
+  if (req.body.categoria !== undefined) { const c = await catOk(req.body.categoria); if (c === null) return fail(res, 400, 'Categoría no válida'); await q('UPDATE jugadoras SET categoria=$1 WHERE id=$2', [c || null, j.id]); }
   if (req.body.telefono !== undefined) await q('UPDATE jugadoras SET telefono=$1 WHERE id=$2', [str(req.body.telefono, 20), j.id]);
   await audit(req.u, 'jugadora_edit', `${j.nombre} ${Object.keys(req.body).join(',')}`); res.json({ ok: true });
 });
@@ -321,7 +327,7 @@ app.get('/api/registro', auth(...STAFF), async (req, res) => {
 });
 
 // ---------- conteo (pase de lista / toque de queda) ----------
-app.get('/api/conteo', auth(...STAFF), async (req, res) => res.json(await q("SELECT j.id, j.nombre, j.habitacion, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera, (SELECT destino FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio' LIMIT 1) AS destino FROM jugadoras j WHERE j.activa ORDER BY j.nombre")));
+app.get('/api/conteo', auth(...STAFF), async (req, res) => res.json(await q("SELECT j.id, j.nombre, j.habitacion, j.categoria, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera, (SELECT destino FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio' LIMIT 1) AS destino FROM jugadoras j WHERE j.activa ORDER BY j.nombre")));
 app.post('/api/conteo', auth(...STAFF), async (req, res) => {
   const presentes = new Set((req.body.presentes || []).map(Number));
   const lista = await q("SELECT j.id, j.nombre, EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio') AS fuera FROM jugadoras j WHERE j.activa");

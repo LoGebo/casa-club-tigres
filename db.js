@@ -26,6 +26,7 @@ for (const stmt of `
 CREATE TABLE IF NOT EXISTS staff(id SERIAL PRIMARY KEY, usuario TEXT UNIQUE NOT NULL, nombre TEXT NOT NULL, rol TEXT NOT NULL CHECK(rol IN('seguridad','coordinacion')), pin_hash TEXT NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE);
 CREATE TABLE IF NOT EXISTS jugadoras(id SERIAL PRIMARY KEY, clave TEXT UNIQUE NOT NULL, nombre TEXT NOT NULL, nacimiento TEXT NOT NULL, habitacion TEXT, tutor_nombre TEXT, tutor_tel TEXT, emergencia_nombre TEXT, emergencia_tel TEXT, alergias TEXT, notas_medicas TEXT, pin_hash TEXT NOT NULL, qr TEXT UNIQUE NOT NULL, activa BOOLEAN NOT NULL DEFAULT TRUE);
 ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS telefono TEXT;
+ALTER TABLE jugadoras ADD COLUMN IF NOT EXISTS categoria TEXT;
 CREATE TABLE IF NOT EXISTS permisos(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), tipo TEXT NOT NULL DEFAULT 'salida', destino TEXT NOT NULL, acompanante TEXT NOT NULL, ubicacion TEXT, motivo TEXT, salida_at ${T} NOT NULL, regreso_at ${T} NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente', creado_at ${T} NOT NULL, padre_token TEXT UNIQUE, padre_enviado_at ${T}, padre_decision TEXT, padre_decision_at ${T}, padre_ip TEXT, padre_ua TEXT, metodo_auth TEXT, nota TEXT, resuelto_por INT, alerta_at ${T});
 CREATE TABLE IF NOT EXISTS movimientos(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), permiso_id INT NOT NULL REFERENCES permisos(id), tipo TEXT NOT NULL CHECK(tipo IN('salida','regreso')), at ${T} NOT NULL, staff_id INT);
 CREATE TABLE IF NOT EXISTS visitas(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), visitante TEXT NOT NULL, relacion TEXT, documento TEXT, estado TEXT NOT NULL DEFAULT 'pendiente', fecha_at ${T} NOT NULL, creado_at ${T} NOT NULL, entrada_at ${T}, salida_at ${T}, nota TEXT, resuelto_por INT);
@@ -46,7 +47,7 @@ CREATE INDEX IF NOT EXISTS ix_mov_at ON movimientos(at);
 `.split(';').map((s) => s.trim()).filter(Boolean)) await q(stmt);
 
 // Configuración editable por Coordinación (valores por defecto)
-export const DEFAULTS = { toque_queda: '22:00', gracia_min: '30', tolerancia_min: '10', max_pendientes: '3', tel_coordinacion: '', nombre_club: 'Casa Club Femenil' };
+export const DEFAULTS = { toque_queda: '22:00', gracia_min: '30', tolerancia_min: '10', max_pendientes: '3', tel_coordinacion: '', nombre_club: 'Casa Club Femenil', categorias: 'Sub-15,Sub-17,Sub-19,Sub-23,Primer equipo' };
 export async function config() {
   const rows = await q('SELECT clave, valor FROM config');
   return { ...DEFAULTS, ...Object.fromEntries(rows.map((r) => [r.clave, r.valor])) };

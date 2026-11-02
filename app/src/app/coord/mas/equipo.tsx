@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { AskBox, useOnChanged } from '@/features/coord-mas/util';
 
 type Staff = { id: number; usuario: string; nombre: string; rol: string; activo: boolean };
-const CAMPOS = ['nombre_club', 'toque_queda', 'gracia_min', 'tolerancia_min', 'max_pendientes', 'tel_coordinacion'] as const;
+const CAMPOS = ['nombre_club', 'toque_queda', 'gracia_min', 'tolerancia_min', 'max_pendientes', 'tel_coordinacion', 'categorias'] as const;
 type Cfg = Record<(typeof CAMPOS)[number], string>;
 
 export default function Equipo() {
@@ -65,6 +65,7 @@ export default function Equipo() {
         <TextField label="Puede salir X min antes" value={c.gracia_min} onChangeText={set('gracia_min')} keyboardType="number-pad" />
         <TextField label="Tolerancia de regreso (min)" value={c.tolerancia_min} onChangeText={set('tolerancia_min')} keyboardType="number-pad" />
         <TextField label="Máx. solicitudes en espera" value={c.max_pendientes} onChangeText={set('max_pendientes')} keyboardType="number-pad" />
+        <TextField label="Categorías (separadas por coma)" value={c.categorias} onChangeText={set('categorias')} />
         <TextField label="Teléfono de Coordinación (para Seguridad)" value={c.tel_coordinacion} onChangeText={set('tel_coordinacion')} keyboardType="phone-pad" />
       </Group>
       <Button title="Guardar reglas" loading={saving} onPress={guardar} />

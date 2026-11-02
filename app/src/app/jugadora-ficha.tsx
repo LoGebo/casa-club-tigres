@@ -10,6 +10,7 @@ import { Avatar, Badge, Button, Group, Icon, Loading, Row, T } from '@/component
 import { Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, qrUrl } from '@/lib/api';
+import { nivelDe } from '@/lib/categorias';
 import { telUrl, type Jugadora } from '@/features/coord/util';
 
 export default function Ficha() {
@@ -45,6 +46,7 @@ export default function Ficha() {
             </View>
           </View>
           <Group header="Datos">
+            <Row minHeight={48} title="Categoría" trailing={<T v="sub">{j.categoria ? `${j.categoria} · ${nivelDe(j.categoria)}` : 'Sin asignar'}</T>} />
             <Row minHeight={48} title="Clave" trailing={<T v="sub">{j.clave}</T>} />
             <Row minHeight={48} title="Nacimiento" trailing={<T v="sub">{j.nacimiento}</T>} />
             {j.alergias ? <Row minHeight={48} title="Alergias" subtitle={j.alergias} /> : null}

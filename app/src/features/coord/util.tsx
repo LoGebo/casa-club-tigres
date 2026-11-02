@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export type Jugadora = {
   id: number; clave: string; nombre: string; nacimiento: string; menor: boolean; habitacion?: string; tutor_nombre?: string; tutor_tel?: string;
-  emergencia_nombre?: string; emergencia_tel?: string; alergias?: string; notas_medicas?: string; activa: boolean; qr: string;
+  emergencia_nombre?: string; emergencia_tel?: string; alergias?: string; notas_medicas?: string; activa: boolean; qr: string; categoria?: string | null; nivel?: string | null; telefono?: string | null;
 };
 
 export const dt = (ms: number) => new Date(ms).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });

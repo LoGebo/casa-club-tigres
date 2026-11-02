@@ -3,17 +3,19 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Switch } from 'react-native';
 
-import { SheetScreen, TextField } from '@/components/form';
+import { Choice, SheetScreen, TextField } from '@/components/form';
 import { notify, run } from '@/components/notify';
 import { Button, Group, Loading, Row } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useCategorias } from '@/lib/categorias';
 import type { Jugadora } from '@/features/coord/util';
 
-const VACIA = { telefono: '', nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '' };
+const VACIA = { categoria: '', telefono: '', nombre: '', clave: '', pin: '', nacimiento: '', habitacion: '', tutor_nombre: '', tutor_tel: '', emergencia_nombre: '', emergencia_tel: '', alergias: '', notas_medicas: '' };
 const edad = (nac: string) => Math.floor((Date.now() - new Date(nac).getTime()) / 31557600000);
 
 export default function JugadoraForm() {
   const { id } = useLocalSearchParams<{ id?: string }>();
+  const cats = useCategorias();
   const [f, setF] = useState(VACIA);
   const [activa, setActiva] = useState(true);
   const [ready, setReady] = useState(!id);
@@ -56,6 +58,9 @@ export default function JugadoraForm() {
             <TextField label="Teléfono de la jugadora" value={f.telefono} onChangeText={set('telefono')} keyboardType="phone-pad" />
             <TextField label="Nacimiento (AAAA-MM-DD)" value={f.nacimiento} onChangeText={id ? () => {} : set('nacimiento')} keyboardType="numbers-and-punctuation" placeholder="2008-05-21" />
             <TextField label="Habitación" value={f.habitacion} onChangeText={set('habitacion')} />
+          </Group>
+          <Group header="Categoría" footer="Puede cambiar con el tiempo (Sub-17 → Sub-19 → Primer equipo).">
+            <Choice options={[['', 'Sin categoría'], ...cats.map((c) => [c, c] as const)]} value={f.categoria} onChange={set('categoria')} />
           </Group>
           <Group header="Tutor y emergencia" footer="Para menores de edad el teléfono del tutor es obligatorio.">
             <TextField label="Tutor" value={f.tutor_nombre} onChangeText={set('tutor_nombre')} autoCapitalize="words" />
