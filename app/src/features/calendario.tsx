@@ -164,7 +164,7 @@ function Fixture({ p, viaja }: { p: Partido; viaja: boolean }) {
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}><Crest team={p.local} size={32} /><Text style={nombre(p.local)}>{abbr(p.local)}</Text></View>
       <View style={{ alignItems: 'center', minWidth: 84, gap: 1 }}>
         <Text style={{ fontSize: p.resultado ? 20 : 17, fontWeight: '700', color: t.label, fontVariant: ['tabular-nums'] }}>{p.resultado ?? hora(p.inicio_at)}</Text>
-        <T v="caption" dim numberOfLines={1} style={{ maxWidth: 110 }}>{p.jornada ? `J${p.jornada}` : ''}</T>
+        <T v="caption" dim numberOfLines={1} style={{ maxWidth: 110 }}>{[/sub-?19/i.test(p.torneo ?? '') ? 'Sub-19' : '', p.jornada ? `J${p.jornada}` : ''].filter(Boolean).join(' · ')}</T>
         {viaja ? <Text style={{ fontSize: 11, fontWeight: '700', color: t.warn }}>Viaja el equipo</Text> : null}
       </View>
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}><Text style={nombre(p.visitante)}>{abbr(p.visitante)}</Text><Crest team={p.visitante} size={32} /></View>

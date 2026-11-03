@@ -730,6 +730,14 @@ async function cuentasIniciales() {
   }
 }
 await cuentasIniciales();
+// Calendarios oficiales (Liga MX Femenil Apertura 2026: Primer equipo y Sub-19 de Tigres). Se siembran una sola vez; luego Coordinación los edita desde la app.
+async function sembrarCalendarios() {
+  if (!(process.env.RENDER || process.env.SEMBRAR_CAL) || (await q("SELECT 1 FROM config WHERE clave='cal_apertura_2026'")).length) return;
+  const cal = JSON.parse(fs.readFileSync(path.join(__dir, 'calendarios.json'), 'utf8')); let n = 0;
+  for (const p of cal) n += (await q('INSERT INTO partidos(torneo,jornada,local,visitante,inicio_at,sede) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING id', [p.torneo, p.jornada, p.local, p.visitante, p.inicio_at, p.sede])).length;
+  await setConfig('cal_apertura_2026', n); console.log(`Calendarios sembrados: ${n} partidos`);
+}
+await sembrarCalendarios();
 if (process.env.RENDER) console.log('Enlace de registro:', `${process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL}/registro?codigo=${await codigoReg()}`);
 await initPush();
 export default app;
