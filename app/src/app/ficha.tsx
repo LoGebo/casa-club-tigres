@@ -40,7 +40,7 @@ export default function Ficha() {
     if (!f || busy) return;
     setBusy(true);
     try {
-      const r = await enviarOCola('/mov', { jugadora_id: f.id, tipo }, `${tipo === 'salida' ? 'Salida' : 'Regreso'} · ${f.nombre}`);
+      const r = await enviarOCola('/mov', { jugadora_id: f.id, tipo, ...(qr?.startsWith('CCP:') && f.permiso ? { permiso_id: f.permiso.id, por_qr: true } : {}) }, `${tipo === 'salida' ? 'Salida' : 'Regreso'} · ${f.nombre}`);
       await registrarLocal(f.id, tipo);
       setHecho({ tipo, cola: r === 'en_cola', at: Date.now() });
     } catch (e) { notify(e instanceof Error ? e.message : 'Algo salió mal'); await load(); }
@@ -93,7 +93,7 @@ export default function Ficha() {
       </View>
       {f.estado === 'autorizada' && p ? (
         <>
-          <Panel tone="ok" sf="checkmark.circle.fill" ion="checkmark-circle" title="Puede salir" sub={p.metodo_auth === 'emergencia' ? 'Salida de emergencia' : undefined} />
+          <Panel tone="ok" sf="checkmark.circle.fill" ion="checkmark-circle" title="Puede salir" sub={f.anticipada ? `Permiso autorizado por Coordinación (sale a las ${hm(p.salida_at)})` : p.metodo_auth === 'emergencia' ? 'Salida de emergencia' : 'Permiso autorizado por Coordinación'} />
           {f.menor ? <Verifica acomp={p.acompanante} recogen={f.recogen} tutor={e.tutor_nombre} /> : null}
           {datos(p)}
           <Button title="Registrar salida" loading={busy} onPress={() => mov('salida')} />
@@ -106,7 +106,7 @@ export default function Ficha() {
         </>
       ) : (
         <>
-          <Panel tone="bad" sf="xmark.circle.fill" ion="close-circle" title="NO puede salir" sub={f.menor ? 'Sin permiso autorizado. Es menor: necesita la autorización del tutor.' : 'Sin permiso autorizado vigente'} />
+          <Panel tone="bad" sf="xmark.circle.fill" ion="close-circle" title="NO puede salir" sub={motivoNo(f)} />
           {f.proximo ? <Group header="Su próximo permiso"><Row minHeight={44} title={f.proximo.destino} subtitle={dt(f.proximo.salida_at)} /></Group> : null}
           <Group>
             {cfg.tel_coordinacion ? <Row title="Llamar a Coordinación" leading={<Icon sf="phone.fill" ion="call" />} onPress={() => Linking.openURL(`tel:${cfg.tel_coordinacion}`)} /> : null}
@@ -164,6 +164,18 @@ function Verifica({ acomp, recogen, tutor }: { acomp: string; recogen: Recoge[];
       </T>
     </View>
   );
+}
+
+/** Explica por qué no puede salir, según el estado real de su permiso */
+function motivoNo(f: F) {
+  const e = f.permiso_escaneado;
+  if (e) {
+    const m: Record<string, string> = { pendiente: 'Este permiso aún NO está autorizado: Coordinación debe autorizarlo.', esperando_padres: 'Este permiso espera la respuesta del tutor.', rechazado: 'Este permiso fue RECHAZADO.', vencido: 'Este permiso ya venció.', cancelado: 'Este permiso fue cancelado.', regreso: 'Este permiso ya se usó: la jugadora ya regresó.', salio: 'Ya salió con este permiso.' };
+    return m[e.estado] ?? 'Este permiso no es válido.';
+  }
+  if (f.pendiente_coord) return 'Tiene un permiso pendiente: Coordinación aún no lo autoriza.';
+  if (f.pendiente_tutor) return 'Su permiso espera la respuesta del tutor.';
+  return f.menor ? 'Sin permiso autorizado. Es menor: necesita permiso autorizado por Coordinación.' : 'Sin permiso autorizado vigente';
 }
 
 const V = ({ children }: { children: string }) => <T v="sub" style={{ fontWeight: '600', flexShrink: 1, textAlign: 'right' }}>{children}</T>;

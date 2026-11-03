@@ -54,6 +54,9 @@ ALTER TABLE permisos ADD COLUMN IF NOT EXISTS padre_intentos INT NOT NULL DEFAUL
 ALTER TABLE permisos ADD COLUMN IF NOT EXISTS recordatorio_at ${T};
 ALTER TABLE permisos ADD COLUMN IF NOT EXISTS alerta2_at ${T};
 ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS cid TEXT;
+CREATE TABLE IF NOT EXISTS bugs(id SERIAL PRIMARY KEY, rol TEXT, user_id INT, nombre TEXT, descripcion TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'falla', pantalla TEXT, dispositivo TEXT, version TEXT, foto_id INT, estado TEXT NOT NULL DEFAULT 'nuevo', nota TEXT, creado_at ${T} NOT NULL, resuelto_at ${T});
+ALTER TABLE permisos ADD COLUMN IF NOT EXISTS qr TEXT DEFAULT md5(random()::text || clock_timestamp()::text);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_perm_qr ON permisos(qr);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_mov_cid ON movimientos(cid) WHERE cid IS NOT NULL;
 CREATE TABLE IF NOT EXISTS recogen(id SERIAL PRIMARY KEY, jugadora_id INT NOT NULL REFERENCES jugadoras(id), nombre TEXT NOT NULL, parentesco TEXT, telefono TEXT, documento TEXT);
 CREATE TABLE IF NOT EXISTS fotos(id SERIAL PRIMARY KEY, data TEXT NOT NULL, mime TEXT NOT NULL, creado_at ${T} NOT NULL, owner_rol TEXT, owner_id INT);

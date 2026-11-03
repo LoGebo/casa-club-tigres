@@ -349,18 +349,29 @@ app.post('/api/p/:t', async (req, res) => {
 });
 
 // ---------- seguridad: escaneo y movimientos ----------
-async function situacion(j, now = Date.now()) {
+async function situacion(j, now = Date.now(), pid = null) {
   const fuera = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='salio'`, [j.id]);
   if (fuera) return { estado: 'fuera', accion: 'regreso', permiso: fmt(fuera) };
   const c = await config();
+  // QR del permiso: si coordinación lo autorizó y no ha vencido, puede salir (menor o no) aunque sea antes de su hora
+  if (pid) {
+    const e = await one(`${conJug} WHERE p.id=$1 AND p.jugadora_id=$2 AND p.estado='autorizado' AND p.regreso_at>=$3`, [pid, j.id, now]);
+    if (e) return { estado: 'autorizada', accion: 'salida', permiso: fmt(e), anticipada: e.salida_at - min(c, 'gracia_min') > now };
+  }
   const ok = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at-$2<=$3 AND p.regreso_at>=$3 ORDER BY p.salida_at LIMIT 1`, [j.id, min(c, 'gracia_min'), now]);
   if (ok) return { estado: 'autorizada', accion: 'salida', permiso: fmt(ok) };
   const prox = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='autorizado' AND p.salida_at>$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
   const espera = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='esperando_padres' AND p.regreso_at>=$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
-  return { estado: 'sin_permiso', accion: null, proximo: prox ? fmt(prox) : null, pendiente_tutor: espera ? fmt(espera) : null };
+  const coord = await one(`${conJug} WHERE p.jugadora_id=$1 AND p.estado='pendiente' AND p.regreso_at>=$2 ORDER BY p.salida_at LIMIT 1`, [j.id, now]);
+  return { estado: 'sin_permiso', accion: null, proximo: prox ? fmt(prox) : null, pendiente_tutor: espera ? fmt(espera) : null, pendiente_coord: coord ? fmt(coord) : null };
 }
-const ficha = async (j) => ({ id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, categoria: j.categoria, menor: esMenor(j), emergencia: { nombre: j.emergencia_nombre || j.tutor_nombre, tel: j.emergencia_tel || j.tutor_tel, alergias: j.alergias, sangre: j.sangre, seguro: j.seguro, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, tel_medico: (await config()).tel_medico }, recogen: await q('SELECT id, nombre, parentesco, telefono, documento FROM recogen WHERE jugadora_id=$1 ORDER BY id', [j.id]), ...(await situacion(j)) });
+const ficha = async (j, pid = null, esc = null) => ({ ...(esc ? { permiso_escaneado: esc } : {}), id: j.id, nombre: j.nombre, clave: j.clave, habitacion: j.habitacion, categoria: j.categoria, menor: esMenor(j), emergencia: { nombre: j.emergencia_nombre || j.tutor_nombre, tel: j.emergencia_tel || j.tutor_tel, alergias: j.alergias, sangre: j.sangre, seguro: j.seguro, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, tel_medico: (await config()).tel_medico }, recogen: await q('SELECT id, nombre, parentesco, telefono, documento FROM recogen WHERE jugadora_id=$1 ORDER BY id', [j.id]), ...(await situacion(j, Date.now(), pid)) });
 app.get('/api/scan/:qr', auth(...STAFF), async (req, res) => {
+  if (req.params.qr.startsWith('CCP:')) {
+    const p = await one(`${conJug} WHERE p.qr=$1`, [req.params.qr.slice(4)]);
+    const jp = p && await one('SELECT * FROM jugadoras WHERE id=$1 AND activa', [p.jugadora_id]);
+    return jp ? res.json(await ficha(jp, p.id, { id: p.id, estado: efectivo(p), destino: p.destino, salida_at: p.salida_at, regreso_at: p.regreso_at })) : fail(res, 404, 'Código de permiso no reconocido');
+  }
   const j = await one('SELECT * FROM jugadoras WHERE qr=$1 AND activa', [req.params.qr.replace(/^CCF:/, '')]);
   j ? res.json(await ficha(j)) : fail(res, 404, 'Código no reconocido');
 });
@@ -374,7 +385,7 @@ app.post('/api/mov', auth(...STAFF), async (req, res) => {
   const cid = str(req.body.cid, 60);
   if (cid && await one('SELECT 1 FROM movimientos WHERE cid=$1', [cid])) return res.json({ ok: true, duplicado: true });
   const ahora = Date.now(), at = Number(req.body.at), hora_mov = at > ahora - 12 * 36e5 && at <= ahora + 6e4 ? at : ahora;
-  const s = await situacion(j, hora_mov), tipo = req.body.tipo;
+  const s = await situacion(j, hora_mov, req.body.por_qr ? Number(req.body.permiso_id) || null : null), tipo = req.body.tipo;
   if (s.accion !== tipo) return fail(res, 409, s.accion ? 'El estado cambió, vuelve a escanear' : 'Sin permiso vigente: NO puede salir');
   const now = hora_mov;
   // Un solo statement atómico: solo registra si el permiso sigue en el estado esperado (evita doble salida por doble toque)
@@ -386,6 +397,32 @@ app.post('/api/mov', auth(...STAFF), async (req, res) => {
     ? `Casa Club Femenil Tigres: ${j.nombre} salió a las ${hora(now)} con destino ${p.destino} (acompañante: ${p.acompanante}). Regreso previsto: ${hora(p.regreso_at)}.`
     : `Casa Club Femenil Tigres: ${j.nombre} regresó a las ${hora(now)}. ¡Todo en orden!`;
   res.json({ ok: true, whatsapp: wa(j, msg) });
+});
+// Salida grupal (entrenamiento): Seguridad marca que todas las que están dentro salieron juntas; crea un permiso por jugadora, avisa a Coordinación y a las jugadoras
+app.post('/api/salida-grupal', auth(...STAFF), async (req, res) => {
+  const motivo = str(req.body.motivo, 80) || 'Entrenamiento', horas = Math.min(Math.max(Number(req.body.horas) || 3, 0.5), 12), now = Date.now();
+  const dentro = await q("SELECT j.id, j.nombre FROM jugadoras j WHERE j.activa AND NOT EXISTS(SELECT 1 FROM permisos p WHERE p.jugadora_id=j.id AND p.estado='salio')");
+  for (const j of dentro) {
+    const p = await one("INSERT INTO permisos(jugadora_id,tipo,destino,acompanante,motivo,salida_at,regreso_at,estado,creado_at,metodo_auth,nota,resuelto_por) VALUES($1,'salida',$2,'Cuerpo técnico','Salida grupal',$3,$4,'salio',$3,'salida_grupal',$5,$6) RETURNING id",
+      [j.id, motivo, now, now + horas * 36e5, `Salida grupal registrada por ${req.u.rol}`, req.u.id]);
+    await q('INSERT INTO movimientos(jugadora_id,permiso_id,tipo,at,staff_id) VALUES($1,$2,$3,$4,$5)', [j.id, p.id, 'salida', now, req.u.id]);
+  }
+  await audit(req.u, 'salida_grupal', `${motivo}: ${dentro.length} jugadoras`);
+  if (dentro.length) {
+    notify(['coordinacion', ...dentro.map((j) => ({ rol: 'jugadora', id: j.id }))], { title: `Salieron a ${motivo.toLowerCase()}`, body: `${dentro.length} jugadoras salieron a las ${hora(now)}. Regreso previsto: ${hora(now + horas * 36e5)}.`, tag: 'grupal-' + now, ruta: '/coord/hoy' });
+  }
+  res.json({ ok: true, jugadoras: dentro.length, regreso_at: now + horas * 36e5 });
+});
+app.post('/api/regreso-grupal', auth(...STAFF), async (req, res) => {
+  const now = Date.now();
+  const fuera = await q("SELECT id, jugadora_id FROM permisos WHERE estado='salio' AND metodo_auth='salida_grupal'");
+  for (const p of fuera) {
+    await q("UPDATE permisos SET estado='regreso' WHERE id=$1 AND estado='salio'", [p.id]);
+    await q('INSERT INTO movimientos(jugadora_id,permiso_id,tipo,at,staff_id) VALUES($1,$2,$3,$4,$5)', [p.jugadora_id, p.id, 'regreso', now, req.u.id]);
+  }
+  await audit(req.u, 'regreso_grupal', `${fuera.length} jugadoras`);
+  if (fuera.length) notify(['coordinacion'], { title: 'Regresaron del entrenamiento', body: `${fuera.length} jugadoras regresaron a las ${hora(now)}.`, tag: 'grupal-reg-' + now, ruta: '/coord/hoy' });
+  res.json({ ok: true, jugadoras: fuera.length });
 });
 app.get('/api/fuera', auth(...STAFF), async (req, res) => {
   const rows = await q(`${conJug} WHERE p.estado='salio'`);

@@ -1,7 +1,7 @@
 // Piezas de formulario compartidas: hoja con título, campo de texto, selector de fecha y hora, selector de opciones.
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
-import { createElement, type ReactNode } from 'react';
+import { createElement, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
 import { Icon, Segmented, T } from '@/components/ui';
@@ -81,8 +81,19 @@ export function Choice<K extends string>({ label, options, value, onChange }: { 
 export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (iso: string) => void }) {
   const t = useTheme();
   const d = value ? new Date(value + 'T12:00') : new Date(2008, 0, 1);
+  // En web (iPhone/WhatsApp) el selector nativo de fecha no siempre aparece: se escribe DD/MM/AAAA y se valida
+  const [txt, setTxt] = useState(() => (value ? value.split('-').reverse().join('/') : ''));
+  const escribir = (raw: string) => {
+    const d = raw.replace(/\D/g, '').slice(0, 8);
+    const f = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+    setTxt(f);
+    if (d.length === 8) {
+      const [dd, mm, yy] = [+d.slice(0, 2), +d.slice(2, 4), +d.slice(4)], x = new Date(yy, mm - 1, dd);
+      onChange(x.getFullYear() === yy && x.getMonth() === mm - 1 && x.getDate() === dd && x <= new Date() && yy > 1950 ? `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}` : '');
+    } else onChange('');
+  };
   const body = Platform.OS === 'web'
-    ? createElement('input', { type: 'date', value, max: new Date().toISOString().slice(0, 10), onChange: (e: { target: { value: string } }) => onChange(e.target.value), style: { font: 'inherit', fontSize: 17, border: 0, background: 'transparent', color: t.label, padding: 0, colorScheme: t.bg === '#000000' ? 'dark' : 'light' } })
+    ? createElement('input', { type: 'text', inputMode: 'numeric', placeholder: 'DD/MM/AAAA', value: txt, maxLength: 10, autoComplete: 'bday', 'aria-label': label, onChange: (e: { target: { value: string } }) => escribir(e.target.value), style: { font: 'inherit', fontSize: 17, border: 0, background: 'transparent', color: t.label, padding: 0, textAlign: 'right', width: 130, outline: 'none' } })
     : <DateTimePicker value={d} mode="date" display="compact" locale="es-MX" maximumDate={new Date()} onChange={(_, x) => x && onChange(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`)} />;
   return (
     <View style={{ paddingHorizontal: Space.l, paddingVertical: 10, backgroundColor: t.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56 }}>

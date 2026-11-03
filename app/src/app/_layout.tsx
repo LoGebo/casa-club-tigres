@@ -5,6 +5,7 @@ import { View } from 'react-native';
 
 import { ToastHost } from '@/components/notify';
 import { OfflineBanner } from '@/components/offline-banner';
+import { ReportarBug } from '@/components/reportar';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -101,6 +102,7 @@ function Gate() {
           </Stack.Protected>
           {/* AGENT:coord-routes */}
         </Stack>
+        {dentro ? <ReportarBug /> : null}
         <OfflineBanner />
         <ToastHost />
       </View>

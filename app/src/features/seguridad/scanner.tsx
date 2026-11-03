@@ -16,7 +16,7 @@ if (Platform.OS === 'web') {
     setZXingModuleOverrides({ locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? '/zxing_reader.wasm' : prefix + path) }));
 }
 
-/** onCode recibe el texto «CCF:…». Con `continuo` la cámara sigue abierta tras cada lectura (abordaje). */
+/** onCode recibe el texto «CCF:…» (jugadora) o «CCP:…» (permiso). Con `continuo` la cámara sigue abierta tras cada lectura (abordaje). */
 export function QrScanner({ onCode, title = 'Escanear QR de la jugadora', continuo }: { onCode: (qr: string) => void; title?: string; continuo?: boolean }) {
   const t = useTheme();
   const [cam, setCam] = useState(false);
@@ -43,7 +43,7 @@ export function QrScanner({ onCode, title = 'Escanear QR de la jugadora', contin
   const leido = ({ data }: { data: string }) => {
     if (lock.current) return;
     lock.current = true;
-    if (!data.startsWith('CCF:')) { notify('Ese código no es de una jugadora'); setTimeout(() => { lock.current = false; }, 1500); return; }
+    if (!(data.startsWith('CCF:') || (!continuo && data.startsWith('CCP:')))) { notify('Ese código no es de una jugadora'); setTimeout(() => { lock.current = false; }, 1500); return; }
     if (continuo) setTimeout(() => { lock.current = false; }, 2000); else setCam(false);
     onCode(data);
   };

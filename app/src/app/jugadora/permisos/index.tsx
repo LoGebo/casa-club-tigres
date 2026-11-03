@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
+import { Image } from 'expo-image';
 import { View } from 'react-native';
 
 import { Badge, Button, Empty, Group, Icon, Loading, Row, Screen, T } from '@/components/ui';
 import { dt, EstadoBadge, useList } from '@/features/jugadora/common';
 import { useTheme } from '@/hooks/use-theme';
+import { qrUrl } from '@/lib/api';
 
-type Permiso = { id: number; tipo: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; estado: string; nota?: string; viaje_id?: number | null; menor?: boolean };
+type Permiso = { id: number; tipo: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; estado: string; nota?: string; viaje_id?: number | null; menor?: boolean; qr?: string };
 
 function Detalle({ p }: { p: Permiso }) {
   const t = useTheme();
@@ -14,7 +16,7 @@ function Detalle({ p }: { p: Permiso }) {
     p.estado === 'rechazado' && p.nota ? `Motivo: ${p.nota}`
     : p.estado === 'cancelado' ? (p.nota || 'Este permiso se canceló.')
     : p.estado === 'esperando_padres' ? (viaje ? 'Esperando la autorización de tu mamá/papá/tutor' : 'Coordinación ya avisó a tu tutor. Falta su respuesta.')
-    : p.estado === 'autorizado' ? (viaje ? 'Autorizado automáticamente por la convocatoria. Muestra tu QR al abordar.' : 'Muestra tu QR a Seguridad al salir y al regresar.')
+    : p.estado === 'autorizado' ? (viaje ? 'Autorizado automáticamente por la convocatoria. Muestra tu QR al abordar.' : 'Muestra el QR de este permiso a Seguridad al salir y al regresar.')
     : viaje && p.estado === 'pendiente' ? 'Se autoriza automáticamente cuando confirmes el viaje.'
     : null;
   const malo = p.estado === 'rechazado' || p.estado === 'vencido';
@@ -29,6 +31,11 @@ function Detalle({ p }: { p: Permiso }) {
         <View style={{ gap: 2 }}>
           <T v="caption" dim>{p.tipo === 'pernocta' ? 'Pernocta · ' : ''}{dt(p.salida_at)} → {dt(p.regreso_at)}</T>
           {!viaje ? <T v="caption" dim>Con {p.acompanante}</T> : null}
+          {!viaje && p.qr && (p.estado === 'autorizado' || p.estado === 'salio') ? (
+            <View style={{ alignSelf: 'flex-start', backgroundColor: '#fff', padding: 8, borderRadius: 12, marginTop: 6 }}>
+              <Image source={{ uri: qrUrl('CCP:' + p.qr) }} style={{ width: 200, height: 200 }} contentFit="contain" accessibilityLabel="QR de este permiso" />
+            </View>
+          ) : null}
           {extra ? <T v="caption" color={malo ? t.bad : p.estado === 'esperando_padres' ? t.warn : t.label2}>{extra}</T> : null}
         </View>
       }

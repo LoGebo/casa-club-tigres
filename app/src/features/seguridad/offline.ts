@@ -8,13 +8,14 @@ import { api, getOnline } from '@/lib/api';
 import { pendientes } from '@/lib/cola';
 
 export type Recoge = { id?: number; nombre: string; parentesco?: string; telefono?: string; documento?: string };
-export type PermisoPk = { id: number; jugadora_id: number; estado: 'autorizado' | 'salio'; tipo?: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; viaje_id?: number | null; ubicacion?: string; metodo_auth?: string };
+export type PermisoPk = { id: number; qr?: string; jugadora_id: number; estado: 'autorizado' | 'salio'; tipo?: string; destino: string; acompanante: string; salida_at: number; regreso_at: number; viaje_id?: number | null; ubicacion?: string; metodo_auth?: string };
 export type Emergencia = { nombre?: string; tel?: string; alergias?: string; sangre?: string; seguro?: string; tutor_nombre?: string; tutor_tel?: string; tel_medico?: string };
 export type JugadoraPk = { id: number; nombre: string; clave?: string; qr: string; habitacion?: string; categoria?: string; menor: boolean; emergencia: Emergencia; recogen: Recoge[] };
 export type Paquete = { generado_at: number; gracia_min: number; tel_coordinacion?: string; tel_medico?: string; jugadoras: JugadoraPk[]; permisos: PermisoPk[] };
 export type Ficha = {
   id: number; nombre: string; habitacion?: string; categoria?: string; menor: boolean; emergencia: Emergencia; recogen: Recoge[];
   estado: 'autorizada' | 'fuera' | 'sin_permiso'; accion: 'salida' | 'regreso' | null; permiso?: PermisoPk; proximo?: PermisoPk | null; local?: boolean;
+  anticipada?: boolean; permiso_escaneado?: { id: number; estado: string; destino: string; salida_at: number; regreso_at: number }; pendiente_coord?: PermisoPk | null; pendiente_tutor?: PermisoPk | null;
 };
 type Mov = { jid: number; tipo: 'salida' | 'regreso'; at: number };
 
@@ -72,11 +73,13 @@ export const edadMin = (p: Paquete | null) => (p ? Math.max(0, Math.round((Date.
 export const textoEdad = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`);
 
 /** Misma lógica que situacion() del servidor, con los datos del paquete */
-export function fichaLocal(p: Paquete, j: JugadoraPk, now = Date.now()): Ficha {
+export function fichaLocal(p: Paquete, j: JugadoraPk, now = Date.now(), pid?: number): Ficha {
   const base = { id: j.id, nombre: j.nombre, habitacion: j.habitacion, categoria: j.categoria, menor: j.menor, emergencia: { ...j.emergencia, tel_medico: j.emergencia.tel_medico || p.tel_medico }, recogen: j.recogen, local: true };
   const mios = p.permisos.filter((x) => x.jugadora_id === j.id);
   const fuera = mios.find((x) => x.estado === 'salio');
   if (fuera) return { ...base, estado: 'fuera', accion: 'regreso', permiso: fuera };
+  const esc = pid ? mios.find((x) => x.id === pid && x.estado === 'autorizado' && x.regreso_at >= now) : undefined;
+  if (esc) return { ...base, estado: 'autorizada', accion: 'salida', permiso: esc, anticipada: esc.salida_at - p.gracia_min * 6e4 > now };
   const ok = mios.filter((x) => x.estado === 'autorizado' && x.salida_at - p.gracia_min * 6e4 <= now && x.regreso_at >= now).sort((a, b) => a.salida_at - b.salida_at)[0];
   if (ok) return { ...base, estado: 'autorizada', accion: 'salida', permiso: ok };
   const prox = mios.filter((x) => x.estado === 'autorizado' && x.salida_at > now).sort((a, b) => a.salida_at - b.salida_at)[0];
@@ -96,6 +99,12 @@ export async function resolver(q: { qr?: string; id?: string }): Promise<Ficha |
     } catch (e) { if (!(e instanceof Error) || e.message !== 'Sin conexión con el servidor') throw e; }
   }
   if (!pack) return null;
+  if (q.qr?.startsWith('CCP:')) {
+    const x = pack.permisos.find((y) => y.qr === q.qr!.slice(4));
+    const jp = x && porId(pack, x.jugadora_id);
+    if (!x || !jp) throw new Error('Permiso no encontrado en los datos guardados. Conéctate para revisarlo.');
+    return fichaLocal(pack, jp, Date.now(), x.id);
+  }
   const j = q.qr ? porQr(pack, q.qr) : porId(pack, Number(q.id));
   if (!j) throw new Error('Código no reconocido en los datos guardados');
   return fichaLocal(pack, j);

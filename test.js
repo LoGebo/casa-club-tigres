@@ -155,6 +155,30 @@ ok(await call('POST', '/api/mov', { jugadora_id: carId, tipo: 'salida', cid: 'of
 const rs = (await call('GET', '/api/resumen', null, co)).j; assert.ok(rs.actual.salidas >= 2);
 ok(await call('POST', '/api/push/expo', { token: 'ExponentPushToken[abc-123]' }, ana)); ok(await call('POST', '/api/push/expo', { token: 'x' }, ana), 400);
 await vigilar();
+// QR por permiso: menor de edad con permiso autorizado por coordinación sale con el QR del permiso; salida grupal
+const mn = (await call('POST', '/api/jugadoras/lote', { rows: [{ nombre: 'Menor Qr Permiso', nacimiento: '2012-05-05', telefono: '8100000002', tutor_nombre: 'Tutora', tutor_tel: '8100000003' }] }, co)).j.creadas[0];
+const mnId = (await call('GET', '/api/jugadoras', null, co)).j.find((x) => x.clave === mn.clave).id;
+const tq = Date.now();
+ok(await call('POST', '/api/permisos', { jugadora_id: mnId, destino: 'Casa', acompanante: 'Mamá', salida_at: tq + 3 * 36e5, regreso_at: tq + 5 * 36e5 }, co));
+const pm = (await call('GET', '/api/permisos', null, co)).j.find((x) => x.jugadora_id === mnId); assert.ok(pm.qr);
+let sc = (await call('GET', '/api/scan/' + encodeURIComponent('CCP:' + pm.qr), null, seg)).j;
+assert.equal(sc.estado, 'sin_permiso'); assert.equal(sc.permiso_escaneado.estado, 'pendiente');
+ok(await call('POST', `/api/permisos/${pm.id}/autorizar`, { nota: 'Llamada a mamá' }, co));
+sc = (await call('GET', '/api/scan/' + encodeURIComponent('CCP:' + pm.qr), null, seg)).j;
+assert.equal(sc.accion, 'salida'); assert.equal(sc.anticipada, true);
+ok(await call('POST', '/api/mov', { jugadora_id: mnId, tipo: 'salida' }, seg), 409); // sin QR del permiso, aún no es su hora
+ok(await call('POST', '/api/mov', { jugadora_id: mnId, tipo: 'salida', permiso_id: pm.id, por_qr: true }, seg));
+ok(await call('POST', '/api/mov', { jugadora_id: mnId, tipo: 'regreso' }, seg));
+const fq0 = (await call('GET', '/api/fuera', null, seg)).j.length;
+const gr = (await call('POST', '/api/salida-grupal', { motivo: 'Entrenamiento' }, seg)).j; assert.ok(gr.jugadoras >= 3);
+assert.equal((await call('GET', '/api/fuera', null, seg)).j.length, fq0 + gr.jugadoras);
+assert.equal((await call('POST', '/api/regreso-grupal', {}, seg)).j.jugadoras, gr.jugadoras);
+assert.equal((await call('GET', '/api/fuera', null, seg)).j.length, fq0);
+// reporte de errores
+ok(await call('POST', '/api/bugs', { descripcion: 'x' }, ana), 400);
+ok(await call('POST', '/api/bugs', { descripcion: 'No se lee el QR', pantalla: '/ficha', tipo: 'bloqueo' }, ana));
+const bl = (await call('GET', '/api/bugs', null, co)).j; assert.equal(bl[0].estado, 'nuevo'); ok(await call('GET', '/api/bugs', null, ana), 401);
+ok(await call('PATCH', '/api/bugs/' + bl[0].id, { estado: 'corregido', nota: 'listo' }, co)); assert.equal((await call('GET', '/api/bugs', null, co)).j[0].estado, 'corregido');
 // borrar cuenta
 const del = await login('caro', '1234'); ok(await call('DELETE', '/api/me', { pin: '0000' }, del), 401); ok(await call('DELETE', '/api/me', { pin: '1234' }, del));
 assert.equal((await call('POST', '/api/login', { usuario: 'caro', pin: '1234' })).s, 401);

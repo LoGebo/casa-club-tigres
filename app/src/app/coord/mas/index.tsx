@@ -16,6 +16,7 @@ const FILAS: { href: string; title: string; sf: string; ion: React.ComponentProp
    { href: 'comedor', title: 'Comedor', sf: 'fork.knife', ion: 'restaurant-outline' }],
   [{ href: 'resumen', title: 'Resumen semanal', sf: 'chart.line.uptrend.xyaxis', ion: 'trending-up-outline' },
    { href: 'reportes', title: 'Reportes', sf: 'chart.bar', ion: 'bar-chart-outline' }],
+  [{ href: 'bugs', title: 'Errores reportados', sf: 'ladybug', ion: 'bug-outline' }],
   [{ href: 'equipo', title: 'Equipo y reglas', sf: 'gearshape', ion: 'settings-outline' }],
 ];
 

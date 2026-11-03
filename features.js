@@ -189,8 +189,35 @@ export default function mount(h) {
     res.json({
       generado_at: now, gracia_min: Number(c.gracia_min), tel_coordinacion: c.tel_coordinacion, tel_medico: c.tel_medico,
       jugadoras: js.map((j) => ({ id: j.id, nombre: j.nombre, clave: j.clave, qr: j.qr, habitacion: j.habitacion, categoria: j.categoria, menor: esMenor(j), emergencia: { nombre: j.emergencia_nombre || j.tutor_nombre, tel: j.emergencia_tel || j.tutor_tel, alergias: j.alergias, sangre: j.sangre, seguro: j.seguro, tutor_nombre: j.tutor_nombre, tutor_tel: j.tutor_tel, tel_medico: c.tel_medico }, recogen: rec.filter((r) => r.jugadora_id === j.id) })),
-      permisos: await q("SELECT id, jugadora_id, estado, tipo, destino, acompanante, salida_at, regreso_at, viaje_id FROM permisos WHERE estado IN('autorizado','salio') AND regreso_at>$1", [now - 24 * 36e5]),
+      permisos: await q("SELECT id, qr, jugadora_id, estado, tipo, destino, acompanante, salida_at, regreso_at, viaje_id FROM permisos WHERE estado IN('autorizado','salio') AND regreso_at>$1", [now - 24 * 36e5]),
     });
+  });
+
+  // ---------- reporte de errores («bugs»): botón flotante en la app; guarda descripción, pantalla, dispositivo y captura para llevar el seguimiento ----------
+  app.post('/api/bugs', auth(), async (req, res) => {
+    const b = req.body, d = str(b.descripcion, 1000);
+    if (!d || d.length < 5) return fail(res, 400, 'Cuéntanos qué pasó (mínimo unas palabras)');
+    if ((await one('SELECT COUNT(*)::int n FROM bugs WHERE rol=$1 AND user_id=$2 AND creado_at>$3', [req.u.rol, req.u.id, Date.now() - 36e5])).n >= 20) return fail(res, 429, 'Demasiados reportes seguidos. Espera un rato.');
+    const nom = req.u.rol === 'jugadora' ? (await one('SELECT nombre FROM jugadoras WHERE id=$1', [req.u.id]))?.nombre : (await one('SELECT nombre FROM staff WHERE id=$1', [req.u.id]))?.nombre;
+    const r = await one('INSERT INTO bugs(rol,user_id,nombre,descripcion,tipo,pantalla,dispositivo,version,foto_id,creado_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+      [req.u.rol, req.u.id, nom || null, d, ['falla', 'bloqueo', 'idea'].includes(b.tipo) ? b.tipo : 'falla', str(b.pantalla, 200), str(b.dispositivo, 300), str(b.version, 40), await fotoMia(b.foto_id, req.u), Date.now()]);
+    await audit(req.u, 'bug_reporte', r.id);
+    notify(['coordinacion'], { title: 'Nuevo reporte de error', body: d.slice(0, 80), tag: 'bug-' + r.id, ruta: '/coord/mas/bugs' });
+    res.json({ ok: true, id: r.id });
+  });
+  app.get('/api/bugs', auth('coordinacion'), async (req, res) => {
+    const rows = await q('SELECT * FROM bugs ORDER BY (estado IN (\'corregido\',\'descartado\')), creado_at DESC LIMIT 300');
+    res.json(rows.map((x) => ({ ...x, foto_url: x.foto_id ? fotoUrl(x.foto_id) : null })));
+  });
+  app.patch('/api/bugs/:id', auth('coordinacion'), async (req, res) => {
+    const e = ['nuevo', 'en_proceso', 'corregido', 'descartado'].includes(req.body.estado) ? req.body.estado : null;
+    await q('UPDATE bugs SET estado=COALESCE($1,estado), nota=COALESCE($2,nota), resuelto_at=CASE WHEN $1 IN (\'corregido\',\'descartado\') THEN $3 WHEN $1 IS NOT NULL THEN NULL ELSE resuelto_at END WHERE id=$4', [e, req.body.nota === undefined ? null : str(req.body.nota, 500), Date.now(), req.params.id]);
+    res.json({ ok: true });
+  });
+  app.get('/api/bugs.csv', auth('coordinacion'), async (req, res) => {
+    const c = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = await q('SELECT * FROM bugs ORDER BY id');
+    res.type('text/csv').send('id,fecha,estado,tipo,quien,rol,pantalla,descripcion,nota,dispositivo\n' + rows.map((x) => [x.id, new Date(x.creado_at).toISOString(), x.estado, x.tipo, x.nombre, x.rol, x.pantalla, x.descripcion, x.nota, x.dispositivo].map(c).join(',')).join('\n'));
   });
 
   // ---------- borrar mi cuenta (requisito de App Store 5.1.1): se eliminan los datos personales; el historial de salidas queda anónimo por seguridad ----------
